@@ -182,6 +182,14 @@ lock_init (struct lock *lock) {
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
+/* 필요한 경우 LOCK을 획득하여 사용할 수 있을 때까지 잠자기 상태로 전환합니다.
+   필요할 때까지 잠듭니다.  잠금은 현재 스레드가 이미 보유하고 있지 않아야 합니다.
+   스레드에 의해 잠겨 있으면 안 됩니다.
+
+   이 함수는 잠자기 상태일 수 있으므로 인터럽트 핸들러 내에서
+   인터럽트 핸들러 내에서 호출해서는 안 됩니다.  이 함수는 인터럽트를 비활성화한 상태에서 호출할 수 있습니다.
+   인터럽트를 비활성화한 상태에서 호출할 수 있지만, 잠자기 상태가 되면 인터럽트가 다시 켜집니다.
+   잠자기 상태가 되면 다시 켜집니다. */
 void
 lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
@@ -217,6 +225,12 @@ lock_try_acquire (struct lock *lock) {
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to release a lock within an interrupt
    handler. */
+/* 현재 스레드가 소유하고 있어야 하는 LOCK을 해제합니다.
+   이것이 lock_release 함수입니다.
+
+   인터럽트 핸들러는 잠금을 획득할 수 없으므로, 인터럽트 핸들러 내에서 잠금을 해제하려고
+   인터럽트 핸들러 내에서 잠금을 해제하는 것은 의미가 없습니다.
+   핸들러 내에서 잠금을 해제하는 것은 의미가 없습니다. */
 void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
