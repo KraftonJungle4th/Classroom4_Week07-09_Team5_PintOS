@@ -94,8 +94,8 @@ timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();	//현재 시간 기록
 
 	ASSERT (intr_get_level () == INTR_ON);	
-	// while (timer_elapsed (start) < ticks)	//경과 시간이 틱보다 작은지 시간 확인 
-	// 	thread_yield ();	//cpu를 산출하고 ready_list에 스레드 삽입
+	while (timer_elapsed (start) < ticks)	//경과 시간이 틱보다 작은지 시간 확인 
+		thread_yield ();	//cpu를 산출하고 ready_list에 스레드 삽입
 }
 
 /* Suspends execution for approximately MS milliseconds. */
