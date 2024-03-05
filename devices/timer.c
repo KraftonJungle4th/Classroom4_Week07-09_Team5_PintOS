@@ -96,8 +96,12 @@ timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();	//현재 시간 기록
 	
 	ASSERT (intr_get_level () == INTR_ON);	
-	// while (timer_elapsed (start) < ticks)	// 현재시간 - start 경과 시간 계산해주고, 틱(주어진 시간)보다 작을 때까지 계속해서 cpu양보 
-	// 	thread_yield ();	//cpu를 산출하고 ready_list에 스레드 삽입
+
+	/* busy waits */ 
+	// while (timer_elapsed (start) < ticks) // 경과 시간 계산해주고, 틱(주어진 시간)보다 작을 때까지 계속해서 cpu양보 
+	// 	thread_yield ();
+	
+	/* Alarm Clock */
 	if(timer_elapsed(start) < ticks)
 		thread_sleep(start + ticks);
 }
@@ -132,6 +136,7 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
 
+	/* Alarm Clock */
 	//매 틱마다, 스레드가 sleep_list에서 깨어나야 하는지 확인하고 깨우기 함수 호출
 	thread_wakeup(ticks);
 }
