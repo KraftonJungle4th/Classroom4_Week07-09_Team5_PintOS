@@ -60,7 +60,7 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 bool sleep_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-bool priorty_greater(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -220,6 +220,11 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	//새로 들어온 스레드와 현재 스레드의 우선순위 비교
+	//새로 들어온 스레드의 우선순위가 더 높으면 ->schedule 실행 , 기존 스레드 cpu양보 yield()
+	if(t->priority > thread_get_priority())
+		thread_yield();
+
 	return tid;
 }
 
@@ -254,7 +259,11 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+
+	//우선순위로 정렬하여 ready_list에 삽입
+	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL);
+
+	// list_push_back (&ready_list, &t->elem);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -320,7 +329,8 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
+		//list_push_back (&ready_list, &curr->elem);
 	do_schedule (THREAD_READY);	//contenxt switching
 	intr_set_level (old_level);	
 }
@@ -352,8 +362,6 @@ thread_wakeup(int64_t ticks)
 	
 	//sleep_list의 시작 지점에 대한 iterator를 반환하여 해당 요소를 struct thread로 캐스팅
 	struct thread *sleep_front_thread = list_entry(list_begin(&sleep_list),struct thread, elem);
-
-	//alarm-priority
 	struct thread *sleep_pop_front_thread;
 
 	while(sleep_front_thread->wakeup_tick <= ticks)
@@ -361,8 +369,9 @@ thread_wakeup(int64_t ticks)
 		old_level = intr_disable();
 		sleep_front_thread->status = THREAD_READY;
 		
+		/* alarm clock - priority */
 		sleep_pop_front_thread = list_entry(list_pop_front(&sleep_list), struct thread, elem);
-		list_insert_ordered(&greater_list, &sleep_pop_front_thread->elem , (list_less_func *) &priorty_greater, NULL);
+		list_insert_ordered(&greater_list, &sleep_pop_front_thread->elem , (list_less_func *) &cmp_priority, NULL);
 		
 		// list_push_back(&ready_list, list_pop_front(&sleep_list));
 		sleep_front_thread = list_entry(list_begin(&sleep_list),struct thread, elem);	
@@ -385,23 +394,25 @@ sleep_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSE
 }
 
 bool
-priorty_greater(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
 	struct thread *ta = list_entry(a, struct thread, elem);
 	struct thread *tb = list_entry(b, struct thread, elem);
 	return ta->priority > tb->priority;
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY.
-	현재 스레드의 우선순위를 새 우선순위로 설정 */
+	현재 스레드의 우선순위를 새 우선순위로 설정 , 현재 스레드가 더 이상 가장 높은 우선 순위를 갖지 않으면 yield*/
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
-	
-	// int old_priority = new_priority;
+
+	struct thread *head_thread = list_entry(list_begin(&ready_list), struct thread, elem);
+	if(thread_current()->priority < head_thread->priority)	
+		thread_yield();
 }
 
-/* Returns the current thread's priority. 
-	현재 스레드의 우선순위를 반환*/
+/* Returns the current thread's priority.     
+	현재 스레드의 우선순위를 반환 , 우선 순위 기부가 있는 경우 더 높은 우선순위를 반환*/
 int
 thread_get_priority (void) {
 	return thread_current ()->priority;
