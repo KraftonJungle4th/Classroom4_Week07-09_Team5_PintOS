@@ -371,7 +371,7 @@ thread_wakeup(int64_t ticks)
 		
 		/* alarm clock - priority */
 		sleep_pop_front_thread = list_entry(list_pop_front(&sleep_list), struct thread, elem);
-		list_insert_ordered(&greater_list, &sleep_pop_front_thread->elem , (list_less_func *) &cmp_priority, NULL);
+		list_insert_ordered(&greater_list, &sleep_pop_front_thread->elem , cmp_priority, NULL);
 		
 		// list_push_back(&ready_list, list_pop_front(&sleep_list));
 		sleep_front_thread = list_entry(list_begin(&sleep_list),struct thread, elem);	
@@ -408,7 +408,9 @@ thread_set_priority (int new_priority) {
 
 	struct thread *head_thread = list_entry(list_begin(&ready_list), struct thread, elem);
 	if(thread_current()->priority < head_thread->priority)	
-		thread_yield();
+		thread_yield(); 
+	else
+		list_sort(&ready_list, cmp_priority, NULL);
 }
 
 /* Returns the current thread's priority.     
