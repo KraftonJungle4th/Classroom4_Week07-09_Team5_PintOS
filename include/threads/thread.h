@@ -97,7 +97,12 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	// 스레드를 이중 연결 목록 ready_list(실행 준비가 된 스레드 목록) 또는 세마포어를 기다리는 스레드 목록에 넣는데 사용되는 "목록 요소"
-	struct list_elem elem;              
+	struct list_elem elem;     
+
+	int original_priority;
+	struct lock *wait_on_lock;
+		
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
