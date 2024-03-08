@@ -196,16 +196,64 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
+	// lock holder가 있는 경우
 	if(lock->holder != NULL)
 	{
+		// lock의 holder의 priority보다 현재 나의 스레드의 priority보다 낮으면 기부한다.
 		if(lock->holder->priority < thread_current()->priority)
 		{
 			lock->holder->priority = thread_current()->priority;
 		}
+
+		// holder의 기부 리스트에 이름을 올린다.
+		list_insert_ordered(&lock->holder->donations, &thread_current()->d_elem, cmp_donor_priority, NULL);
+
+		// wait on에 현재 쓰레드가 기다리고 있는 것을 표시한다.
+		thread_current()->wait_on_lock = lock;
+
+		// lock의 waiters에 대기자 명단 추가
+		printf("===");
+		printf("%x", &lock->semaphore.waiters);
+		struct list * waiters_list = &lock->semaphore.waiters;
+		// list_insert_ordered(waiters_list, &thread_current()->elem, cmp_priority, NULL);
+
+
+		// list_insert_ordered(&lock->semaphore.waiters, &waiter.elem, cmp_condvar_priority, NULL);
+
+	
 	}
 
+
+	// ===== 현재 스레드에 대한 잠금 획득 ====
 	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();	//현재 스레드에 대한 잠금 획득
+	lock->holder = thread_current ();	
+
+	// 획득 이후 NULL값으로
+	// thread_current()->wait_on_lock = NULL;
+	
+	// waiters에서도 제거
+
+		// elem = list_begin (list);
+		// while ((next = list_next (elem)) != list_end (list))
+		// if (!less (elem, next, aux) && !less (next, elem, aux)) {
+		// 	list_remove (next);
+		// 	if (duplicates != NULL)
+		// 		list_push_back (duplicates, next);
+		// } else
+		// 	elem = next;
+	
+	// struct list waiters_list = lock->semaphore.waiters;
+
+	
+
+	
+
+
+	
+
+
+
+
 }
 
 /* Tries to acquires LOCK and returns true if successful or false

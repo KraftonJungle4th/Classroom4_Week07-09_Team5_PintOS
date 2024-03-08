@@ -122,6 +122,7 @@ thread_init (void) {
 	list_init (&sleep_list);
 	list_init (&greater_list);
 	list_init (&destruction_req);
+	
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -400,6 +401,14 @@ cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNU
 	return ta->priority > tb->priority;
 }
 
+bool
+cmp_donor_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	struct thread *ta = list_entry(a, struct thread, d_elem);
+	struct thread *tb = list_entry(b, struct thread, d_elem);
+	return ta->priority > tb->priority;
+}
+
+
 /* Sets the current thread's priority to NEW_PRIORITY.
 	현재 스레드의 우선순위를 새 우선순위로 설정 , 현재 스레드가 더 이상 가장 높은 우선 순위를 갖지 않으면 yield*/
 void
@@ -510,6 +519,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 	t->original_priority = priority;
+	list_init(&t->donations);
+	t->wait_on_lock = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
