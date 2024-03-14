@@ -223,7 +223,7 @@ thread_create (const char *name, int priority,
 	//새로 들어온 스레드와 현재 스레드의 우선순위 비교
 	//새로 들어온 스레드의 우선순위가 더 높으면 ->schedule 실행 , 기존 스레드 cpu양보 yield()
 	if(t->priority > thread_get_priority())
-		thread_yield();
+		thread_try_yield();
 
 	return tid;
 }
@@ -290,6 +290,11 @@ thread_current (void) {
 	ASSERT (t->status == THREAD_RUNNING);
 
 	return t;
+}
+
+void thread_try_yield(void){
+	if(!list_empty(&ready_list) && thread_current() != idle_thread && !(intr_context()))
+		thread_yield();
 }
 
 /* Returns the running thread's tid. */
