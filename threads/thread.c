@@ -69,7 +69,7 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
-
+void thread_try_yield(void);
 /* Returns true if T appears to point to a valid thread.
 	t가 유효한 스레드를 가리키면 true반환 */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -223,7 +223,7 @@ thread_create (const char *name, int priority,
 	//새로 들어온 스레드와 현재 스레드의 우선순위 비교
 	//새로 들어온 스레드의 우선순위가 더 높으면 ->schedule 실행 , 기존 스레드 cpu양보 yield()
 	if(t->priority > thread_get_priority())
-		thread_yield();
+		thread_try_yield();
 
 	return tid;
 }
@@ -334,6 +334,13 @@ thread_yield (void) {
 
 	do_schedule (THREAD_READY);	//contenxt switching
 	intr_set_level (old_level);	// 인터럽트 활성화, 커널 모드-> 유저 모드
+}
+
+void thread_try_yield(void){
+	struct thread *t_d = list_entry(list_begin(&ready_list),struct thread, elem);
+	if(!list_empty(&ready_list) && thread_current() != idle_thread 
+		&& thread_current()->priority < t_d->priority )
+		thread_yield();
 }
 
 void

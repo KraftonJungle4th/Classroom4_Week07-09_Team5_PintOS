@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "syscall.h": "c",
+        "lib.h": "c",
+        "stdbool.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "disabled"
+}
