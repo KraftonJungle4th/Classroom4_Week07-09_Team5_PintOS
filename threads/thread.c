@@ -710,3 +710,9 @@ cmp_donor_priority(const struct list_elem *a, const struct list_elem *b, void *a
 	struct thread *tb = list_entry(b, struct thread, d_elem);
 	return ta->priority > tb->priority;
 }
+
+// project2 시작시 kernel panic 해결용
+void thread_try_yield(void){
+	if(!list_empty(&ready_list) && thread_current() != idle_thread && !(intr_context()))
+		thread_yield();
+}
