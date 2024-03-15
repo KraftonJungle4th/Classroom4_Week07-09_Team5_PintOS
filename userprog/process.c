@@ -26,7 +26,7 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
-void argument_stack(char **argv, int argc, void **rsp);
+void argument_stack(char **argv, int argc, struct intr_frame *if_);
 
 /* General process initializer for initd and other process. */
 static void
@@ -187,28 +187,31 @@ process_exec (void *f_name) {
 	process_cleanup ();
 
 	// Argument Passing ~
+    int argc = 0;
     char *argv[64];		//parssing한 인자를 담을 배열
     char *token, *save_ptr;
-    int argc = 0;
     
 	for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
-        argv[argc++] = token;
+    {   
+		argv[argc++] = token;
+		// printf("argv[0] %s \n" , argv[0]);
+		// printf("argv[1] %s \n" , argv[1]);
+	}	
     // ~ Argument Passing
 		
 	/* And then load the binary */
 	success = load (file_name, &_if);
-	// 이진 파일을 디스크에서 메모리로 로드한다.
-    // 로드된 후 실행할 메인 함수의 시작 주소 필드 초기화 (if_.rip)
-    // user stack의 top 포인터 초기화 (if_.rsp)
-    // 위 과정을 성공하면 실행을 계속하고, 실패하면 스레드가 종료된다.
+
+	// printf("_if.rsp %p \n", _if.rsp);		//_if.rsp 0x47480000 
 
 	// Argument Passing ~
-    argument_stack(argv, argc, &_if.rsp); // 함수 내부에서 argv와 rsp의 값을 직접 변경하기 위해 주소 전달
-    _if.R.rdi = argc;					//인자의 개수 argc
-    _if.R.rsi = (char *)_if.rsp + 8;	//argv의 시작주소
-
+    argument_stack(argv, argc, &_if); // 함수 내부에서 argv와 rsp의 값을 직접 변경하기 위해 주소 전달
     hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack을 16진수로 프린트
     // ~ Argument Passing
+
+	// printf("_if.rsp %p \n", ㅈ_if.rsp);		//_if.rsp 0x4747ffc8
+	// printf("_if.R.rdi %p \n", _if.R.rdi);	// 인자의 개수 0x2
+	// printf("_if.R.rsi %p \n ", _if.R.rsi);	//0x4747ffd0
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -221,41 +224,45 @@ process_exec (void *f_name) {
 }
 
 /* process_exec() 함수에서 parsing한 프로그램 이름과 인자를 스택에 저장하기 위해 사용할 함수 */
-void argument_stack(char **argv, int argc, void **rsp) // 주소를 전달받았으므로 이중 포인터 사용
+void argument_stack(char **argv, int argc, struct intr_frame *if_) // 주소를 전달받았으므로 이중 포인터 사용
 {
-    // 프로그램 이름, 인자 문자열 push
-    for (int i = argc - 1; i > -1; i--)
-    {
-        for (int j = strlen(argv[i]); j > -1; j--)
-        {
-            (*rsp)--;                      // 스택 주소 감소
-            **(char **)rsp = argv[i][j]; // 주소에 문자 저장
-        }
-        argv[i] = *(char **)rsp; // argv[i]에 현재 rsp의 값 저장해둠(지금 저장한 인자가 시작하는 주소값)
-    }
+	char *arg_address[128];
 
-    // 정렬 패딩 push
-    int padding = (int)*rsp % 8;
-    for (int i = 0; i < padding; i++)
-    {
-        (*rsp)--;
-        **(uint8_t **)rsp = 0; // rsp 직전까지 값 채움
-    }
+	// 프로그램 이름, 인자 문자열 push
+	for(int i = argc - 1; i >= 0; i--)
+	{
+		int arg_i_len = strlen(argv[i]) +1;		//sential(\0) 포함
+		if_->rsp -= arg_i_len;					//인자 크기만큼 스택을 늘려줌
+		memcpy(if_->rsp, argv[i], arg_i_len);	//늘려준 공간에 해당 인자를 복사
+		arg_address[i] = (char *)if_->rsp;		//arg_address에 위 인자를 복사해준 주소값을 저장
+	}
 
-    // 인자 문자열 종료를 나타내는 0 push
-    (*rsp) -= 8;
-    **(char ***)rsp = 0; // char* 타입의 0 추가
+	// word-align(8의 배수)로 맞춰주기
+	if(if_->rsp % 8 != 0)
+	{	
+		int padding = if_->rsp % 8;
+		if_->rsp -= padding;
+		memset(if_->rsp, 0, padding);
+	}
 
-    // 각 인자 문자열의 주소 push
-    for (int i = argc - 1; i > -1; i--)
-    {
-        (*rsp) -= 8; // 다음 주소로 이동
-        **(char ***)rsp = argv[i]; // char* 타입의 주소 추가
-    }
+	// 인자 문자열 종료를 나타내는 0 push
+	if_->rsp -= 8; 	
+	memset(if_->rsp, 0, 8);
 
-    // return address push
-    (*rsp) -= 8;
-    **(void ***)rsp = 0; // void* 타입의 0 추가
+	// 각 인자 문자열의 주소 push
+	for(int i = argc-1; i >= 0; i--)
+	{
+		if_->rsp -= 8;
+		memcpy(if_->rsp, &arg_address[i], 8);
+	}
+
+	// fake return address
+	if_->rsp -= 8;
+	memset(if_->rsp, 0, 8);
+
+	//rdi 에는 인자의 개수, rsi에는 argv 첫 인자의 시작 주소 저장
+	if_->R.rdi = argc;
+	if_->R.rsi = if_->rsp + 8;	//fake return address + 8
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
