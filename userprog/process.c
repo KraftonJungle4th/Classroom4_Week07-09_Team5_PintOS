@@ -26,6 +26,7 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+void argument_stack(char **argv, int argc, void **rsp);
 
 /* General process initializer for initd and other process. */
 static void
@@ -45,14 +46,17 @@ process_create_initd (const char *file_name) {
 
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
-	fn_copy = palloc_get_page (0);
+	fn_copy = palloc_get_page (0);	//file_name의 복사본
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	//Argument Pasing
+	//command_line을 parsing해서 file_name 찾는다.
 	char *save_ptr;
 	strtok_r (file_name, " ", &save_ptr);
-
+	//~Argument Pasing
+	
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
@@ -161,45 +165,11 @@ error:
 	thread_exit ();
 }
 
-void argument_stack(char **parse, int count, void **rsp) // 주소를 전달받았으므로 이중 포인터 사용
-{
-    // 프로그램 이름, 인자 문자열 push
-    for (int i = count - 1; i > -1; i--)
-    {
-        for (int j = strlen(parse[i]); j > -1; j--)
-        {
-            (*rsp)--;                      // 스택 주소 감소
-            **(char **)rsp = parse[i][j]; // 주소에 문자 저장
-        }
-        parse[i] = *(char **)rsp; // parse[i]에 현재 rsp의 값 저장해둠(지금 저장한 인자가 시작하는 주소값)
-    }
-
-    // 정렬 패딩 push
-    int padding = (int)*rsp % 8;
-    for (int i = 0; i < padding; i++)
-    {
-        (*rsp)--;
-        **(uint8_t **)rsp = 0; // rsp 직전까지 값 채움
-    }
-
-    // 인자 문자열 종료를 나타내는 0 push
-    (*rsp) -= 8;
-    **(char ***)rsp = 0; // char* 타입의 0 추가
-
-    // 각 인자 문자열의 주소 push
-    for (int i = count - 1; i > -1; i--)
-    {
-        (*rsp) -= 8; // 다음 주소로 이동
-        **(char ***)rsp = parse[i]; // char* 타입의 주소 추가
-    }
-
-    // return address push
-    (*rsp) -= 8;
-    **(void ***)rsp = 0; // void* 타입의 0 추가
-}
-
 /* Switch the current execution context to the f_name.
- * Returns -1 on fail. */
+ * Returns -1 on fail. 
+   현재 실행 컨텍스트를 f_name으로 전환한다. 실패 시 -1 반환
+   새로운 프로세스를 실행하는 데 사용
+*/
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
@@ -217,11 +187,12 @@ process_exec (void *f_name) {
 	process_cleanup ();
 
 	// Argument Passing ~
-    char *parse[64];
+    char *argv[64];		//parssing한 인자를 담을 배열
     char *token, *save_ptr;
-    int count = 0;
-    for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
-        parse[count++] = token;
+    int argc = 0;
+    
+	for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
+        argv[argc++] = token;
     // ~ Argument Passing
 		
 	/* And then load the binary */
@@ -232,9 +203,9 @@ process_exec (void *f_name) {
     // 위 과정을 성공하면 실행을 계속하고, 실패하면 스레드가 종료된다.
 
 	// Argument Passing ~
-    argument_stack(parse, count, &_if.rsp); // 함수 내부에서 parse와 rsp의 값을 직접 변경하기 위해 주소 전달
-    _if.R.rdi = count;
-    _if.R.rsi = (char *)_if.rsp + 8;
+    argument_stack(argv, argc, &_if.rsp); // 함수 내부에서 argv와 rsp의 값을 직접 변경하기 위해 주소 전달
+    _if.R.rdi = argc;					//인자의 개수 argc
+    _if.R.rsi = (char *)_if.rsp + 8;	//argv의 시작주소
 
     hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack을 16진수로 프린트
     // ~ Argument Passing
@@ -249,6 +220,43 @@ process_exec (void *f_name) {
 	NOT_REACHED ();
 }
 
+/* process_exec() 함수에서 parsing한 프로그램 이름과 인자를 스택에 저장하기 위해 사용할 함수 */
+void argument_stack(char **argv, int argc, void **rsp) // 주소를 전달받았으므로 이중 포인터 사용
+{
+    // 프로그램 이름, 인자 문자열 push
+    for (int i = argc - 1; i > -1; i--)
+    {
+        for (int j = strlen(argv[i]); j > -1; j--)
+        {
+            (*rsp)--;                      // 스택 주소 감소
+            **(char **)rsp = argv[i][j]; // 주소에 문자 저장
+        }
+        argv[i] = *(char **)rsp; // argv[i]에 현재 rsp의 값 저장해둠(지금 저장한 인자가 시작하는 주소값)
+    }
+
+    // 정렬 패딩 push
+    int padding = (int)*rsp % 8;
+    for (int i = 0; i < padding; i++)
+    {
+        (*rsp)--;
+        **(uint8_t **)rsp = 0; // rsp 직전까지 값 채움
+    }
+
+    // 인자 문자열 종료를 나타내는 0 push
+    (*rsp) -= 8;
+    **(char ***)rsp = 0; // char* 타입의 0 추가
+
+    // 각 인자 문자열의 주소 push
+    for (int i = argc - 1; i > -1; i--)
+    {
+        (*rsp) -= 8; // 다음 주소로 이동
+        **(char ***)rsp = argv[i]; // char* 타입의 주소 추가
+    }
+
+    // return address push
+    (*rsp) -= 8;
+    **(void ***)rsp = 0; // void* 타입의 0 추가
+}
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
@@ -264,9 +272,9 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	for (int i = 0; i < 10000000000; i++)
-    {
-    }
+	for(int i = 0; i < 10000000000; i++){
+
+	}
 	return -1;
 }
 
@@ -282,7 +290,8 @@ process_exit (void) {
 	process_cleanup ();
 }
 
-/* Free the current process's resources. */
+/* Free the current process's resources. 
+	현재 프로세스 자원 해제*/
 static void
 process_cleanup (void) {
 	struct thread *curr = thread_current ();
