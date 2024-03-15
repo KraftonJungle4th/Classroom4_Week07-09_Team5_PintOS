@@ -292,11 +292,6 @@ thread_current (void) {
 	return t;
 }
 
-void thread_try_yield(void){
-	if(!list_empty(&ready_list) && thread_current() != idle_thread && !(intr_context()))
-		thread_yield();
-}
-
 /* Returns the running thread's tid. */
 tid_t
 thread_tid (void) {
@@ -339,6 +334,11 @@ thread_yield (void) {
 
 	do_schedule (THREAD_READY);	//contenxt switching
 	intr_set_level (old_level);	// 인터럽트 활성화, 커널 모드-> 유저 모드
+}
+
+void thread_try_yield(void){
+	if(!list_empty(&ready_list) && thread_current() != idle_thread && !(intr_context()))
+		thread_yield();
 }
 
 void
