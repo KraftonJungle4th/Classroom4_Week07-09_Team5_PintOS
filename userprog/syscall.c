@@ -34,7 +34,7 @@ void halt (void)
 void exit (int status)
 {	
 	struct thread *cur = thread_current();
-	printf("%s: exit(%d)\n", cur->name, status);`
+	printf("%s: exit(%d)\n", cur->name, status);
 	thread_exit();
 }
 
@@ -50,18 +50,33 @@ int write (int fd, const void *buffer, unsigned length)
 	return byte;
 }
 
+//initial_size만큼 새로운 file 생성
+bool create (const char *file, unsigned initial_size)
+{
+	if(!check_address(file))
+		return filesys_create (file, initial_size);
+}
+
 // pid_t fork (const char *thread_name);
 // 자식 프로세스를 생성하고 그 위에 cmd_line에 해당하는 프로그램 실행
 // int exec (const char *file);
+// int read (int fd, void *buffer, unsigned length);
 // int wait (pid_t);
-// bool create (const char *file, unsigned initial_size);
 // bool remove (const char *file);
 // int open (const char *file);
 // int filesize (int fd);
-// int read (int fd, void *buffer, unsigned length);
 // void seek (int fd, unsigned position);
 // unsigned tell (int fd);
 // void close (int fd);
+
+
+// 유효한 주소값인지 확인
+void check_address(void *file_addr)
+{
+	struct thread *t = thread_current();
+	if(pml4_get_page(t->pml4, file_addr) == NULL || !is_user_vaddr(file_addr) || file_addr == NULL)
+		exit(-1);
+}
 
 void
 syscall_init (void) {
@@ -98,13 +113,13 @@ syscall_handler (struct intr_frame *f UNUSED)
 		case SYS_WAIT:
 			break;
 		case SYS_CREATE:
+			f->R.rax = create(f->R.rdi, f->R.rsi);
 			break;
 		case SYS_OPEN:
 			break;
 		case SYS_FILESIZE:
 			break;
 		case SYS_READ:
-			// f->R.rax = read();
 			break;
 		case SYS_WRITE:
 			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
@@ -121,12 +136,4 @@ syscall_handler (struct intr_frame *f UNUSED)
 	}
 	//printf ("system call!\n");
 	//thread_exit ();
-}
-
-//유효한 주소값인지 확인
-void check_address(void *addr)
-{
-	struct thread *t = thread_current();
-	if(!is_user_vaddr(addr) || addr == NULL || pml4_get_page(t->pml4, addr) == NULL)
-		exit(-1);
 }
