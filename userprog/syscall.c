@@ -30,31 +30,15 @@ void halt (void)
 	power_off();
 }
 
-//현재 사용자 프로그램을 종료하여 커널 상태로 리턴
+//현재 유저 프로그램을 종료하여 커널 상태로 리턴
 void exit (int status)
 {	
 	struct thread *cur = thread_current();
-	printf("%s : exit(%d) \n", cur->name, status);
+	printf("%s: exit(%d)\n", cur->name, status);`
 	thread_exit();
 }
 
-// pid_t fork (const char *thread_name);
-
-//자식 프로세스를 생성하고 그 위에 cmd_line에 해당하는 프로그램 실행
-// int exec (const char *file)
-// {
-
-// }
-
-// int wait (pid_t);
-// bool create (const char *file, unsigned initial_size);
-// bool remove (const char *file);
-// int open (const char *file);
-// int filesize (int fd);
-// int read (int fd, void *buffer, unsigned length)
-// {
-
-// }
+//열린 버퍼 fd로 buffer에 담긴 length만큼 쓰기 작업을 진행한다.
 int write (int fd, const void *buffer, unsigned length)
 {
 	int byte = 0;
@@ -63,10 +47,18 @@ int write (int fd, const void *buffer, unsigned length)
 		putbuf(buffer, length);
 		byte = length;
 	}
-	
 	return byte;
 }
 
+// pid_t fork (const char *thread_name);
+// 자식 프로세스를 생성하고 그 위에 cmd_line에 해당하는 프로그램 실행
+// int exec (const char *file);
+// int wait (pid_t);
+// bool create (const char *file, unsigned initial_size);
+// bool remove (const char *file);
+// int open (const char *file);
+// int filesize (int fd);
+// int read (int fd, void *buffer, unsigned length);
 // void seek (int fd, unsigned position);
 // unsigned tell (int fd);
 // void close (int fd);
@@ -90,7 +82,7 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-	int sys_num = f->R.rax;		//시스템 콜 번호
+	int sys_num = f->R.rax;	 //시스템 콜 번호
 	switch(sys_num)
 	{
 		case SYS_HALT:

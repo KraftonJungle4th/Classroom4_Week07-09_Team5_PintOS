@@ -194,24 +194,16 @@ process_exec (void *f_name) {
 	for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
     {   
 		argv[argc++] = token;
-		// printf("argv[0] %s \n" , argv[0]);
-		// printf("argv[1] %s \n" , argv[1]);
 	}	
     // ~ Argument Passing
 		
 	/* And then load the binary */
 	success = load (file_name, &_if);
 
-	// printf("_if.rsp %p \n", _if.rsp);		//_if.rsp 0x47480000 
-
 	// Argument Passing ~
     argument_stack(argv, argc, &_if); // 함수 내부에서 argv와 rsp의 값을 직접 변경하기 위해 주소 전달
     // hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack을 16진수로 프린트
     // ~ Argument Passing
-
-	// printf("_if.rsp %p \n", _if.rsp);		//_if.rsp 0x4747ffc8
-	// printf("_if.R.rdi %p \n", _if.R.rdi);	// 인자의 개수 0x2
-	// printf("_if.R.rsi %p \n ", _if.R.rsi);	//0x4747ffd0
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
