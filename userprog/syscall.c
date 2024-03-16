@@ -7,6 +7,7 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "threads/init.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -24,6 +25,52 @@ void syscall_handler (struct intr_frame *);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+void halt (void) 
+{	
+	power_off();
+}
+
+//현재 사용자 프로그램을 종료하여 커널 상태로 리턴
+void exit (int status)
+{	
+	struct thread *cur = thread_current();
+	printf("%s : exit(%d) \n", cur->name, status);
+	thread_exit();
+}
+
+// pid_t fork (const char *thread_name);
+
+//자식 프로세스를 생성하고 그 위에 cmd_line에 해당하는 프로그램 실행
+// int exec (const char *file)
+// {
+
+// }
+
+// int wait (pid_t);
+// bool create (const char *file, unsigned initial_size);
+// bool remove (const char *file);
+// int open (const char *file);
+// int filesize (int fd);
+// int read (int fd, void *buffer, unsigned length)
+// {
+
+// }
+int write (int fd, const void *buffer, unsigned length)
+{
+	int byte = 0;
+	if(fd == 1)
+	{
+		putbuf(buffer, length);
+		byte = length;
+	}
+	
+	return byte;
+}
+
+// void seek (int fd, unsigned position);
+// unsigned tell (int fd);
+// void close (int fd);
+
 void
 syscall_init (void) {
 	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
@@ -38,9 +85,56 @@ syscall_init (void) {
 }
 
 /* The main system call interface */
+/* 시스템 콜 번호를 받아오고, 어떤 시스템 콜 인자들을 받아오고,
+   그에 알맞은 액션을 취해야 한다.*/
 void
-syscall_handler (struct intr_frame *f UNUSED) {
-	// TODO: Your implementation goes here.
-	printf ("system call!\n");
-	thread_exit ();
+syscall_handler (struct intr_frame *f UNUSED) 
+{
+	int sys_num = f->R.rax;		//시스템 콜 번호
+	switch(sys_num)
+	{
+		case SYS_HALT:
+			halt();
+			break;
+		case SYS_EXIT:	
+			exit(f->R.rdi);
+			break;
+		case SYS_FORK:
+			break;
+		case SYS_EXEC:
+			break;
+		case SYS_WAIT:
+			break;
+		case SYS_CREATE:
+			break;
+		case SYS_OPEN:
+			break;
+		case SYS_FILESIZE:
+			break;
+		case SYS_READ:
+			// f->R.rax = read();
+			break;
+		case SYS_WRITE:
+			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+			break;	
+		case SYS_SEEK:
+			break;	
+		case SYS_TELL:
+			break;	
+		case SYS_CLOSE:
+			break;	
+
+		default:
+			break;
+	}
+	//printf ("system call!\n");
+	//thread_exit ();
+}
+
+//유효한 주소값인지 확인
+void check_address(void *addr)
+{
+	struct thread *t = thread_current();
+	if(!is_user_vaddr(addr) || addr == NULL || pml4_get_page(t->pml4, addr) == NULL)
+		exit(-1);
 }
