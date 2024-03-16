@@ -194,24 +194,16 @@ process_exec (void *f_name) {
 	for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr))
     {   
 		argv[argc++] = token;
-		// printf("argv[0] %s \n" , argv[0]);
-		// printf("argv[1] %s \n" , argv[1]);
 	}	
     // ~ Argument Passing
 		
 	/* And then load the binary */
 	success = load (file_name, &_if);
 
-	// printf("_if.rsp %p \n", _if.rsp);		//_if.rsp 0x47480000 
-
 	// Argument Passing ~
     argument_stack(argv, argc, &_if); // 함수 내부에서 argv와 rsp의 값을 직접 변경하기 위해 주소 전달
-    hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack을 16진수로 프린트
+    // hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack을 16진수로 프린트
     // ~ Argument Passing
-
-	// printf("_if.rsp %p \n", ㅈ_if.rsp);		//_if.rsp 0x4747ffc8
-	// printf("_if.R.rdi %p \n", _if.R.rdi);	// 인자의 개수 0x2
-	// printf("_if.R.rsi %p \n ", _if.R.rsi);	//0x4747ffd0
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
@@ -273,15 +265,18 @@ void argument_stack(char **argv, int argc, struct intr_frame *if_) // 주소를 
  * immediately, without waiting.
  *
  * This function will be implemented in problem 2-2.  For now, it
- * does nothing. */
+ * does nothing. 
+
+ * 최초의 process가 종료되기 전에 Pintos가 종료되지 않도록 하십시오!
+    - main()에서 process_wait()를 호출하여 pintos가 최초의 process보다 먼저
+      종료되는 것을 막으려고 시도한다.
+*/
 int
 process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	for(int i = 0; i < 10000000000; i++){
-
-	}
+	for(int i = 0; i < 2000000000; i++);
 	return -1;
 }
 
