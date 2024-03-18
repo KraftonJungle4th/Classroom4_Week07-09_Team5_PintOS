@@ -202,7 +202,8 @@ process_exec (void *f_name) {
 
 	// Argument Passing ~
     argument_stack(argv, argc, &_if); // 함수 내부에서 argv와 rsp의 값을 직접 변경하기 위해 주소 전달
-    // hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack을 16진수로 프린트
+    
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true); // user stack을 16진수로 프린트
     // ~ Argument Passing
 
 	/* If load failed, quit. */
@@ -216,7 +217,7 @@ process_exec (void *f_name) {
 }
 
 /* process_exec() 함수에서 parsing한 프로그램 이름과 인자를 스택에 저장하기 위해 사용할 함수 */
-void argument_stack(char **argv, int argc, struct intr_frame *if_) // 주소를 전달받았으므로 이중 포인터 사용
+void argument_stack(char **argv, int argc, struct intr_frame *if_)
 {
 	char *arg_address[128];
 
@@ -276,7 +277,7 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	for(int i = 0; i < 2000000000; i++);
+	for(size_t i = 0; i < 7000000000; i++);
 	return -1;
 }
 

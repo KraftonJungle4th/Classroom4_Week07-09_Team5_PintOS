@@ -11,6 +11,7 @@
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+void check_address(void *file_addr);
 
 /* System call.
  *
@@ -52,13 +53,12 @@ int write (int fd, const void *buffer, unsigned length)
 
 //initial_size만큼 새로운 file 생성
 bool create (const char *file, unsigned initial_size)
-{
-	if(!check_address(file))
-		return filesys_create (file, initial_size);
+{	
+	check_address(file);
+	return filesys_create (file, initial_size);
 }
 
 // pid_t fork (const char *thread_name);
-// 자식 프로세스를 생성하고 그 위에 cmd_line에 해당하는 프로그램 실행
 // int exec (const char *file);
 // int read (int fd, void *buffer, unsigned length);
 // int wait (pid_t);
@@ -68,7 +68,6 @@ bool create (const char *file, unsigned initial_size)
 // void seek (int fd, unsigned position);
 // unsigned tell (int fd);
 // void close (int fd);
-
 
 // 유효한 주소값인지 확인
 void check_address(void *file_addr)
