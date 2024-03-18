@@ -46,6 +46,7 @@ static struct lock tid_lock;
 /* Thread destruction requests */
 static struct list destruction_req;
 
+
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
@@ -504,6 +505,12 @@ init_thread (struct thread *t, const char *name, int priority) {
 	//priotity, donation
 	t->original_priority = priority;
 	list_init(&t->donations);
+	list_init(&t->fd_list);
+
+
+	#ifdef USERPROG
+	t->last_create_fd =2;
+	#endif
 }
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
