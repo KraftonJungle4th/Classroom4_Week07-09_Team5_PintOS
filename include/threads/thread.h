@@ -108,6 +108,8 @@ struct thread {
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
+	struct list fd_list;				//filedescriptor list
+	int last_create_fd;					//마지막 fd 갱신
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
@@ -117,6 +119,13 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* 레지스터 및 스택 포인터를 포함하는 컨텍스트 전환을 위한 정보 저장 */
 	unsigned magic;                     /* 스택 오버플로우 감지 */
+};
+
+//파일 디스크립터 구조체
+struct fd {
+	int fd_num;
+	struct list_elem fd_elem;
+	struct file *file;
 };
 
 /* If false (default), use round-robin scheduler.
@@ -159,5 +168,8 @@ void do_iret (struct intr_frame *tf);
 
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 bool cmp_donor_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+//userprogram 
+int process_add_file(struct file *file);
 
 #endif /* threads/thread.h */

@@ -12,6 +12,7 @@
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 void check_address(void *file_addr);
+int process_add_file(struct file *file);
 
 /* System call.
  *
@@ -51,19 +52,55 @@ int write (int fd, const void *buffer, unsigned length)
 	return byte;
 }
 
-//initial_size만큼 새로운 file 생성
+//initial_size만큼 새로운 file 초기화한다.
 bool create (const char *file, unsigned initial_size)
 {	
 	check_address(file);
 	return filesys_create (file, initial_size);
 }
 
+//file을 연다.
+int open (const char *file)
+{
+	check_address(file);
+	struct file *f = filesys_open(file);	
+
+	if(f != NULL)
+	{
+		int fd = process_add_file(f);
+		return fd;
+	}
+	else
+		return -1;
+}
+
+int process_add_file(struct file *file)
+{
+	struct thread *curr = thread_current();
+	struct fd *cur_fd = malloc(sizeof(struct fd));
+
+	cur_fd->file = file;
+	cur_fd->fd_num = (curr->last_create_fd)++;	
+	//list_push_back(&curr->fd_list, &cur_fd->fd_elem);
+	
+	return cur_fd->fd_num; 
+}
+
 // pid_t fork (const char *thread_name);
 // int exec (const char *file);
-// int read (int fd, void *buffer, unsigned length);
+// int read (int fd, void *buffer, unsigned length)
+// {
+// 	int byte = 0;
+// 	if(fd == 0)
+// 	{
+// 		byte = input_getc();
+// 	}
+// 	return byte;
+// }
+
 // int wait (pid_t);
 // bool remove (const char *file);
-// int open (const char *file);
+
 // int filesize (int fd);
 // void seek (int fd, unsigned position);
 // unsigned tell (int fd);
@@ -73,7 +110,7 @@ bool create (const char *file, unsigned initial_size)
 void check_address(void *file_addr)
 {
 	struct thread *t = thread_current();
-	if(pml4_get_page(t->pml4, file_addr) == NULL || !is_user_vaddr(file_addr) || file_addr == NULL)
+	if(pml4_get_page(t->pml4, file_addr) == NULL || !is_user_vaddr(file_addr) || file_addr == NULL || file_addr == "\0")
 		exit(-1);
 }
 
@@ -115,10 +152,12 @@ syscall_handler (struct intr_frame *f UNUSED)
 			f->R.rax = create(f->R.rdi, f->R.rsi);
 			break;
 		case SYS_OPEN:
+			f->R.rax = open(f->R.rdi);
 			break;
 		case SYS_FILESIZE:
 			break;
 		case SYS_READ:
+			// f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_WRITE:
 			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
