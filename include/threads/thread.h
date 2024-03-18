@@ -103,6 +103,8 @@ struct thread {
 	struct lock *wait_on_lock;
 	struct list donations;
 	struct list_elem d_elem;
+	struct list fd_list;				//filedescriptor list
+
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -119,6 +121,13 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* 레지스터 및 스택 포인터를 포함하는 컨텍스트 전환을 위한 정보 저장 */
 	unsigned magic;                     /* 스택 오버플로우 감지 */
+};
+
+//파일 디스크립터 구조체
+struct fd {
+	int fd_num;
+	struct list_elem fd_elem;
+	struct file *file;
 };
 
 //파일 디스크립터 구조체
@@ -172,4 +181,9 @@ bool cmp_donor_priority(const struct list_elem *a, const struct list_elem *b, vo
 //userprogram 
 int process_add_file(struct file *file);
 
+//userprogram 
+int process_add_file(struct file *file);
+
+//userprogram 
+int process_add_file(struct file *file);
 #endif /* threads/thread.h */

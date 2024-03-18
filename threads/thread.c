@@ -46,6 +46,7 @@ static struct lock tid_lock;
 /* Thread destruction requests */
 static struct list destruction_req;
 
+
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
@@ -718,4 +719,10 @@ cmp_donor_priority(const struct list_elem *a, const struct list_elem *b, void *a
 	struct thread *ta = list_entry(a, struct thread, d_elem);
 	struct thread *tb = list_entry(b, struct thread, d_elem);
 	return ta->priority > tb->priority;
+}
+
+// project2 시작시 kernel panic 해결용
+void thread_try_yield(void){
+	if(!list_empty(&ready_list) && thread_current() != idle_thread && !(intr_context()))
+		thread_yield();
 }

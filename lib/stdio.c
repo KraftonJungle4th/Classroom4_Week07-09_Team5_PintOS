@@ -553,6 +553,7 @@ void
 hex_dump (uintptr_t ofs, const void *buf_, size_t size, bool ascii) {
 	const uint8_t *buf = buf_;
 	const size_t per_line = 16; /* Maximum bytes per line. */
+	// printf("===hex_dump=== %d:\n", size); // 추가된 printf 문
 
 	while (size > 0) {
 		size_t start, end, n;

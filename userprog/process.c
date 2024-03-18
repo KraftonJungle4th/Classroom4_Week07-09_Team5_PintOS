@@ -712,3 +712,45 @@ setup_stack (struct intr_frame *if_) {
 	return success;
 }
 #endif /* VM */
+
+/* process_exec() 함수에서 parsing한 프로그램 이름과 인자를 스택에 저장하기 위해 사용할 함수 */
+void argument_stack(char **argv, int argc, struct intr_frame *if_)
+{
+	char *arg_address[128];
+
+	// 프로그램 이름, 인자 문자열 push
+	for(int i = argc - 1; i >= 0; i--)
+	{
+		int arg_i_len = strlen(argv[i]) +1;		//sential(\0) 포함
+		if_->rsp -= arg_i_len;					//인자 크기만큼 스택을 늘려줌
+		memcpy(if_->rsp, argv[i], arg_i_len);	//늘려준 공간에 해당 인자를 복사
+		arg_address[i] = (char *)if_->rsp;		//arg_address에 위 인자를 복사해준 주소값을 저장
+	}
+
+	// word-align(8의 배수)로 맞춰주기
+	if(if_->rsp % 8 != 0)
+	{	
+		int padding = if_->rsp % 8;
+		if_->rsp -= padding;
+		memset(if_->rsp, 0, padding);
+	}
+
+	// 인자 문자열 종료를 나타내는 0 push
+	if_->rsp -= 8; 	
+	memset(if_->rsp, 0, 8);
+
+	// 각 인자 문자열의 주소 push
+	for(int i = argc-1; i >= 0; i--)
+	{
+		if_->rsp -= 8;
+		memcpy(if_->rsp, &arg_address[i], 8);
+	}
+
+	// fake return address
+	if_->rsp -= 8;
+	memset(if_->rsp, 0, 8);
+
+	//rdi 에는 인자의 개수, rsi에는 argv 첫 인자의 시작 주소 저장
+	if_->R.rdi = argc;
+	if_->R.rsi = if_->rsp + 8;	//fake return address + 8
+}

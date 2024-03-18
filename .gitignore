@@ -1,2 +1,4 @@
 /threads/build
 .envrc
+/userprog/build
+settings.json
