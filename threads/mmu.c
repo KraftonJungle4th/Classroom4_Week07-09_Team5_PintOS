@@ -91,7 +91,10 @@ pml4e_walk (uint64_t *pml4e, const uint64_t va, int create) {
 /* Creates a new page map level 4 (pml4) has mappings for kernel
  * virtual addresses, but none for user virtual addresses.
  * Returns the new page directory, or a null pointer if memory
- * allocation fails. */
+ * allocation fails. 
+ * */
+
+/* PML4는 x86 아키텍처에서 가상 메모리와 물리 메모리 간의 매핑을 제어하는 페이지 테이블의 최상위 레벨*/
 uint64_t *
 pml4_create (void) {
 	uint64_t *pml4 = palloc_get_page (0);
@@ -209,7 +212,8 @@ pml4_activate (uint64_t *pml4) {
 /* Looks up the physical address that corresponds to user virtual
  * address UADDR in pml4.  Returns the kernel virtual address
  * corresponding to that physical address, or a null pointer if
- * UADDR is unmapped. */
+ * UADDR is unmapped. 
+ * 사용자 가상 주소에 해당하는 실제 주소를 조회한다. */
 void *
 pml4_get_page (uint64_t *pml4, const void *uaddr) {
 	ASSERT (is_user_vaddr (uaddr));
