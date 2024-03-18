@@ -55,6 +55,7 @@ int write (int fd, const void *buffer, unsigned length)
 bool create (const char *file, unsigned initial_size)
 {	
 	check_address(file);
+
 	return filesys_create (file, initial_size);
 }
 
@@ -63,17 +64,35 @@ bool create (const char *file, unsigned initial_size)
 // int read (int fd, void *buffer, unsigned length);
 // int wait (pid_t);
 // bool remove (const char *file);
-// int open (const char *file);
+
+
+int open (const char *file)
+{
+	check_address(file);
+	struct file *f = filesys_open(file);
+	if(f == NULL)
+		return -1;
+	return add_fd(f);
+}
+
 // int filesize (int fd);
 // void seek (int fd, unsigned position);
 // unsigned tell (int fd);
-// void close (int fd);
+void close (int fd)
+{
+	struct thread *t = thread_current();
+	struct file *f = t->fd[fd];
+	file_close(f);
+	t->fd[fd] = NULL;
+
+}
+
 
 // 유효한 주소값인지 확인
 void check_address(void *file_addr)
 {
 	struct thread *t = thread_current();
-	if(pml4_get_page(t->pml4, file_addr) == NULL || !is_user_vaddr(file_addr) || file_addr == NULL)
+	if(pml4_get_page(t->pml4, file_addr) == NULL || !is_user_vaddr(file_addr) || file_addr == NULL || file_addr < (void *)0x08048000)
 		exit(-1);
 }
 
@@ -115,6 +134,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 			f->R.rax = create(f->R.rdi, f->R.rsi);
 			break;
 		case SYS_OPEN:
+			f->R.rax = open(f->R.rdi);
 			break;
 		case SYS_FILESIZE:
 			break;
@@ -128,11 +148,12 @@ syscall_handler (struct intr_frame *f UNUSED)
 		case SYS_TELL:
 			break;	
 		case SYS_CLOSE:
+			close(f->R.rdi);
 			break;	
 
 		default:
 			break;
 	}
 	//printf ("system call!\n");
-	//thread_exit ();
+	// thread_exit ();
 }

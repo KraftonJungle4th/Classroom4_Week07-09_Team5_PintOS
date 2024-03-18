@@ -98,11 +98,12 @@ struct thread {
 	/* Shared between thread.c and synch.c. */
 	// 스레드를 이중 연결 목록 ready_list(실행 준비가 된 스레드 목록) 또는 세마포어를 기다리는 스레드 목록에 넣는데 사용되는 "목록 요소"
 	struct list_elem elem;     
-
 	int original_priority;
 	struct lock *wait_on_lock;
 	struct list donations;
 	struct list_elem d_elem;
+	struct file *fd[128];
+	int fd_count;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -118,6 +119,11 @@ struct thread {
 	unsigned magic;                     /* 스택 오버플로우 감지 */
 };
 
+struct fd {
+	int fd;
+	struct file *file;
+	struct list_elem elem;
+};
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -158,5 +164,5 @@ void do_iret (struct intr_frame *tf);
 
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 bool cmp_donor_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-
+int add_fd(struct file *f);
 #endif /* threads/thread.h */

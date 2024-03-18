@@ -33,7 +33,7 @@ static struct list ready_list;
 static struct list sleep_list;
 /* prioirty list */
 static struct list greater_list;
-
+static struct list fd_list;
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -122,7 +122,7 @@ thread_init (void) {
 	list_init (&sleep_list);
 	list_init (&greater_list);
 	list_init (&destruction_req);
-
+	list_init (&fd_list);
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
 	init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -715,3 +715,14 @@ cmp_donor_priority(const struct list_elem *a, const struct list_elem *b, void *a
 	struct thread *tb = list_entry(b, struct thread, d_elem);
 	return ta->priority > tb->priority;
 }
+
+#ifdef USERPROG
+int add_fd(struct file *f){
+	struct thread *t = thread_current();
+	struct fd *fd = (struct fd *)malloc(sizeof(struct fd));
+	fd->fd = t->fd_count++;
+	fd->file = f;
+	list_push_back(&fd_list, &fd->elem);
+	return fd->fd;
+}
+#endif
