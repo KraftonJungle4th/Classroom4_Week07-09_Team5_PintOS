@@ -67,23 +67,20 @@ int open (const char *file)
 
 	if(f != NULL)
 	{
-		int fd = process_add_file(f);
+		int fd = process_add_file(f, &thread_current()->fd_list, thread_current()->last_create_fd);
 		return fd;
 	}
 	else
 		return -1;
 }
 
-int process_add_file(struct file *file)
+int process_add_file(struct file *file, struct list *fd_list, int last_create_fd)
 {
-	struct thread *curr = thread_current();
-	struct fd *cur_fd = malloc(sizeof(struct fd));
-
-	cur_fd->file = file;
-	cur_fd->fd_num = (curr->last_create_fd)++;	
-	//list_push_back(&curr->fd_list, &cur_fd->fd_elem);
-	
-	return cur_fd->fd_num; 
+	struct fd *new_fd = malloc(sizeof(struct fd));
+	new_fd->file = file;
+	new_fd->fd_num = last_create_fd + 1;
+	list_push_back(fd_list, &new_fd->fd_elem);
+	return new_fd->fd_num;
 }
 
 // pid_t fork (const char *thread_name);
@@ -104,7 +101,23 @@ int process_add_file(struct file *file)
 // int filesize (int fd);
 // void seek (int fd, unsigned position);
 // unsigned tell (int fd);
-// void close (int fd);
+// void close (int fd)
+// {
+// 	struct list_elem *e;
+// 	struct thread *t = thread_current();
+// 	struct fd *f;
+// 	for(e = list_begin(&t->fd_list); e != list_end(&t->fd_list); e = list_next(e))
+// 	{
+// 		f = list_entry(e, struct fd, fd_elem);
+// 		if(f->fd_num == fd)
+// 		{
+// 			file_close(f->file);
+// 			list_remove(e);
+// 			free(f);
+// 			break;
+// 		}
+// 	}
+// }
 
 // 유효한 주소값인지 확인
 void check_address(void *file_addr)
@@ -167,6 +180,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 		case SYS_TELL:
 			break;	
 		case SYS_CLOSE:
+			// close(f->R.rdi);
 			break;	
 
 		default:

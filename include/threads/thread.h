@@ -109,6 +109,7 @@ struct thread {
 	uint64_t *pml4;                     /* Page map level 4 */
 	struct list fd_list;				//filedescriptor list
 	int last_create_fd;					//마지막 fd 갱신
+	int fd_num;
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
