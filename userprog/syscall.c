@@ -53,6 +53,12 @@ int write (int fd, const void *buffer, unsigned length)
 	{
 		putbuf(buffer, length);
 		byte = length;
+	}else
+	{
+		check_buffer(buffer);
+		struct file_descrpitor *curr_fd = find_file_descriptor(fd);
+		if(curr_fd == NULL) return NULL;
+		byte = file_write(curr_fd->file, buffer, length);
 	}
 	return byte;
 }
