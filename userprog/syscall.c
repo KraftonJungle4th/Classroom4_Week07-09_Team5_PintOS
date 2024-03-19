@@ -9,6 +9,7 @@
 #include "intrinsic.h"
 #include "threads/init.h"
 
+
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 void check_address(void *file_addr);
@@ -91,10 +92,29 @@ int process_add_file(struct file *file)
 	return cur_fd->fd_num; 
 }
 
-// void close (int fd)
-// {
-	
-// }
+void close (int fd)
+{
+	struct thread *curr = thread_current();
+	struct list *fd_list = &thread_current()->fd_list;
+	struct list_elem *front_elem = list_begin(&fd_list);
+
+	while(front_elem != list_end(&fd_list))
+	{
+		struct file_discrpitor *cur_fd = list_entry(front_elem, struct file_discrpitor, fd_elem);
+
+		if(cur_fd->fd_num == fd)
+		{
+			list_remove(&cur_fd->fd_elem);
+			file_close (cur_fd->file);
+			free(cur_fd);
+			
+		}			
+		cur_fd = list_next(front_elem);
+	}
+}
+
+
+
 
 // pid_t fork (const char *thread_name);
 // int exec (const char *file);
@@ -176,7 +196,8 @@ syscall_handler (struct intr_frame *f UNUSED)
 		case SYS_TELL:
 			break;	
 		case SYS_CLOSE:
-			//close(f->R.rdi);
+			printf("close 호출 \n");
+			close(f->R.rdi);
 			break;	
 
 		default:
