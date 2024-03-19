@@ -9,6 +9,7 @@
 #include "intrinsic.h"
 #include "threads/init.h"
 
+
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 void check_address(void *file_addr);
@@ -27,6 +28,7 @@ int process_add_file(struct file *file);
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
+//Pintos 종료
 void halt (void) 
 {	
 	power_off();
@@ -63,28 +65,56 @@ bool create (const char *file, unsigned initial_size)
 int open (const char *file)
 {
 	check_address(file);
-	struct file *f = filesys_open(file);	
-
+	struct file *f = filesys_open(file);
+	
 	if(f != NULL)
 	{
 		int fd = process_add_file(f);
+
 		return fd;
 	}
 	else
 		return -1;
 }
 
+//현재 스레드의 파일 디스크립터에 현재 파일을 추가한다.
 int process_add_file(struct file *file)
 {
 	struct thread *curr = thread_current();
-	struct fd *cur_fd = malloc(sizeof(struct fd));
-
+	struct file_discrpitor *cur_fd = malloc(sizeof(struct file_discrpitor));
+	struct list *fd_list = &thread_current()->fd_list;
+	
 	cur_fd->file = file;
 	cur_fd->fd_num = (curr->last_create_fd)++;	
-	//list_push_back(&curr->fd_list, &cur_fd->fd_elem);
 	
+	list_push_back(fd_list, &cur_fd->fd_elem);
+
 	return cur_fd->fd_num; 
 }
+
+void close (int fd)
+{
+	struct thread *curr = thread_current();
+	struct list *fd_list = &thread_current()->fd_list;
+	struct list_elem *front_elem = list_begin(&fd_list);
+
+	while(front_elem != list_end(&fd_list))
+	{
+		struct file_discrpitor *cur_fd = list_entry(front_elem, struct file_discrpitor, fd_elem);
+
+		if(cur_fd->fd_num == fd)
+		{
+			list_remove(&cur_fd->fd_elem);
+			file_close (cur_fd->file);
+			free(cur_fd);
+			
+		}			
+		cur_fd = list_next(front_elem);
+	}
+}
+
+
+
 
 // pid_t fork (const char *thread_name);
 // int exec (const char *file);
@@ -104,7 +134,6 @@ int process_add_file(struct file *file)
 // int filesize (int fd);
 // void seek (int fd, unsigned position);
 // unsigned tell (int fd);
-// void close (int fd);
 
 // 유효한 주소값인지 확인
 void check_address(void *file_addr)
@@ -167,6 +196,8 @@ syscall_handler (struct intr_frame *f UNUSED)
 		case SYS_TELL:
 			break;	
 		case SYS_CLOSE:
+			printf("close 호출 \n");
+			close(f->R.rdi);
 			break;	
 
 		default:

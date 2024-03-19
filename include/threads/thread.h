@@ -121,7 +121,7 @@ struct thread {
 };
 
 //파일 디스크립터 구조체
-struct fd {
+struct file_discrpitor {
 	int fd_num;
 	struct list_elem fd_elem;
 	struct file *file;
@@ -168,7 +168,6 @@ void do_iret (struct intr_frame *tf);
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 bool cmp_donor_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
-//userprogram 
-int process_add_file(struct file *file);
+
 
 #endif /* threads/thread.h */
