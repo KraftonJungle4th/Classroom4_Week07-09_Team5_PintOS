@@ -94,7 +94,8 @@ pml4e_walk (uint64_t *pml4e, const uint64_t va, int create) {
  * allocation fails. 
  * */
 
-/* PML4는 x86 아키텍처에서 가상 메모리와 물리 메모리 간의 매핑을 제어하는 페이지 테이블의 최상위 레벨*/
+/* PML4는 x86 아키텍처에서 가상 메모리와 물리 메모리 간의 매핑을 제어하는 페이지 테이블의 최상위 레벨
+	사용자 가상 주소에 대한 매핑 */
 uint64_t *
 pml4_create (void) {
 	uint64_t *pml4 = palloc_get_page (0);
