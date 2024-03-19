@@ -122,7 +122,7 @@ struct thread {
 };
 
 //파일 디스크립터 구조체
-struct file_discrpitor {
+struct file_descrpitor {
 	int fd_num;
 	struct list_elem fd_elem;
 	struct file *file;
