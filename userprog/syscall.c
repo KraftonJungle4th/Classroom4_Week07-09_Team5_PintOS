@@ -8,12 +8,14 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "threads/init.h"
-
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 void check_address(void *file_addr);
 int process_add_file(struct file *file);
+struct file_descrpitor *find_file_descriptor(int fd);
 
 /* System call.
  *
@@ -27,6 +29,7 @@ int process_add_file(struct file *file);
 #define MSR_STAR 0xc0000081         /* Segment selector msr */
 #define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
+
 
 //Pintos 종료
 void halt (void) 
@@ -50,6 +53,12 @@ int write (int fd, const void *buffer, unsigned length)
 	{
 		putbuf(buffer, length);
 		byte = length;
+	}else
+	{
+		check_buffer(buffer);
+		struct file_descrpitor *curr_fd = find_file_descriptor(fd);
+		if(curr_fd == NULL) return NULL;
+		byte = file_write(curr_fd->file, buffer, length);
 	}
 	return byte;
 }
@@ -81,7 +90,7 @@ int open (const char *file)
 int process_add_file(struct file *file)
 {
 	struct thread *curr = thread_current();
-	struct file_discrpitor *cur_fd = malloc(sizeof(struct file_discrpitor));
+	struct file_descrpitor *cur_fd = malloc(sizeof(struct file_descrpitor));
 	struct list *fd_list = &thread_current()->fd_list;
 	
 	cur_fd->file = file;
@@ -94,44 +103,66 @@ int process_add_file(struct file *file)
 
 void close (int fd)
 {
-	struct thread *curr = thread_current();
-	struct list *fd_list = &thread_current()->fd_list;
-	struct list_elem *front_elem = list_begin(&fd_list);
-
-	while(front_elem != list_end(&fd_list))
-	{
-		struct file_discrpitor *cur_fd = list_entry(front_elem, struct file_discrpitor, fd_elem);
-
-		if(cur_fd->fd_num == fd)
-		{
-			list_remove(&cur_fd->fd_elem);
-			file_close (cur_fd->file);
-			free(cur_fd);
-			
-		}			
-		cur_fd = list_next(front_elem);
-	}
+	struct file_descrpitor *curr_fd = find_file_descriptor(fd);
+	if(curr_fd == NULL) return NULL;
+	list_remove(&curr_fd->fd_elem);
+	file_close(curr_fd->file);
+	free(curr_fd);
 }
 
+struct file_descrpitor *find_file_descriptor(int fd)
+{
+	struct list *fd_list = &thread_current()->fd_list;
+	if(list_empty(fd_list)) return NULL;
 
+	struct file_descrpitor *file_descriptor;
+	struct list_elem *cur_fd_elem = list_begin(fd_list);
+
+	while(cur_fd_elem != list_end(&fd_list))
+	{
+		file_descriptor = list_entry(cur_fd_elem, struct file_descrpitor, fd_elem);
+
+		if(file_descriptor->fd_num == fd)
+		{
+			return file_descriptor;	
+		}			
+		file_descriptor = list_next(cur_fd_elem);
+	}
+	return NULL;
+}
 
 
 // pid_t fork (const char *thread_name);
 // int exec (const char *file);
-// int read (int fd, void *buffer, unsigned length)
-// {
-// 	int byte = 0;
-// 	if(fd == 0)
-// 	{
-// 		byte = input_getc();
-// 	}
-// 	return byte;
-// }
+int read (int fd, void *buffer, unsigned length)
+{
+	int byte = 0;
+	if(fd == 0)
+	{
+		byte = input_getc();
+	}
+	else
+	{
+		check_buffer(buffer);
+		struct file_descrpitor *curr_fd = find_file_descriptor(fd);
+		if(curr_fd == NULL) return NULL;
+		byte = file_read(curr_fd->file, buffer, length);
+	}
+	
+	return byte;
+}
 
 // int wait (pid_t);
 // bool remove (const char *file);
 
-// int filesize (int fd);
+int filesize (int fd)
+{
+	struct file_descrpitor *curr_fd = find_file_descriptor(fd);
+	int byte = 0;
+	byte = file_length(curr_fd->file);
+	return byte;
+}
+
 // void seek (int fd, unsigned position);
 // unsigned tell (int fd);
 
@@ -139,7 +170,15 @@ void close (int fd)
 void check_address(void *file_addr)
 {
 	struct thread *t = thread_current();
-	if(pml4_get_page(t->pml4, file_addr) == NULL || !is_user_vaddr(file_addr) || file_addr == NULL || file_addr == "\0")
+	if(file_addr == "\0" || file_addr == NULL || !is_user_vaddr(file_addr) || pml4_get_page(t->pml4, file_addr) == NULL)
+		exit(-1);
+}
+
+// 유효한 버퍼 주소 값인지 확인
+void check_buffer(void *buffer)
+{
+	struct thread *t = thread_current();
+	if(!is_user_vaddr(buffer) || pml4_get_page(t->pml4, buffer) == NULL)
 		exit(-1);
 }
 
@@ -184,9 +223,10 @@ syscall_handler (struct intr_frame *f UNUSED)
 			f->R.rax = open(f->R.rdi);
 			break;
 		case SYS_FILESIZE:
+			f->R.rax = filesize(f->R.rdi);
 			break;
 		case SYS_READ:
-			// f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
+			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
 			break;
 		case SYS_WRITE:
 			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
@@ -196,7 +236,6 @@ syscall_handler (struct intr_frame *f UNUSED)
 		case SYS_TELL:
 			break;	
 		case SYS_CLOSE:
-			printf("close 호출 \n");
 			close(f->R.rdi);
 			break;	
 
