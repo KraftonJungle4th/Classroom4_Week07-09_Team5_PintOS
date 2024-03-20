@@ -107,6 +107,7 @@ struct thread {
 	struct list donations;
 	struct list_elem d_elem;
 
+
 	// system call
 	int last_create_fd;				//마지막 fd 갱신
 	struct list fd_list;			//filedescriptor list
