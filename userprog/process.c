@@ -192,18 +192,17 @@ __do_fork (void *aux) {
 
 	//파일 디스크립터 테이블의 파일 복제
 	struct file_descriptor *fd;
-	struct list *fd_list = &thread_current()->fd_list;
-	struct list_elem *e = list_begin(fd_list);
+	struct list_elem *e = list_begin(&parent->fd_list);
+	struct list *parent_list = &parent->fd_list;
 
-	for (e = list_begin (fd_list); e != list_end (fd_list); e = list_next (e))
+	for (e = list_begin (parent_list); e != list_end (parent_list); e = list_next (e))
 	{
 		fd = list_entry (e, struct file_descriptor, fd_elem);
 
-		if (fd->file == NULL)
-			continue;
-
-		// 특별한 파일(표준 입력, 표준 출력, 표준 오류)이 아닌 경우에만 파일을 복제한다.
-		if (fd->fd_num > 2) {
+		if(fd->file != NULL)
+		{
+			// 특별한 파일(표준 입력, 표준 출력, 표준 오류)이 아닌 경우에만 파일을 복제한다.
+			
 			struct file *file = file_duplicate(fd->file);
 			if (file != NULL) {
 				// 파일을 복제한 후, 새로운 파일 디스크립터 테이블에 추가한다.
@@ -211,10 +210,19 @@ __do_fork (void *aux) {
 				if (new_fd != NULL) {
 					new_fd->file = file;
 					new_fd->fd_num = fd->fd_num;
-					list_push_back(fd_list, &new_fd->fd_elem);
+					list_push_back(&current->fd_list, &new_fd->fd_elem);
 				}
+				else
+				{
+					file_close(file);
+					goto error;
+				}	
 			}
+			else
+				goto error;
+			
 		}
+		
 	}
 
 	current->last_create_fd = parent->last_create_fd;
