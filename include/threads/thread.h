@@ -107,18 +107,19 @@ struct thread {
 	struct list donations;
 	struct list_elem d_elem;
 
-	int last_create_fd;					//마지막 fd 갱신
-	struct list fd_list;				//filedescriptor list
+	// system call
+	int last_create_fd;				//마지막 fd 갱신
+	struct list fd_list;			//filedescriptor list
 
-	struct intr_frame parent_if;		//부모의 if
-	struct list child_list;
-	struct list_elem child_elem;
+	struct intr_frame parent_if;	
+	struct list child_list;			//자식 리스트
+	struct list_elem child_elem;	
 
 	struct semaphore load_sema;
 	struct semaphore exit_sema;
 	struct semaphore wait_sema;
 	 
-	struct file *running;
+	struct file *running;	//현재 스레드의 실행 중인 파일을 저장
 	int exit_status;
 
 #ifdef USERPROG

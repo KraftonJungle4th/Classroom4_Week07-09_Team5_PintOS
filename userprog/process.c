@@ -95,29 +95,15 @@ process_fork (const char *name, struct intr_frame *if_ UNUSED) {
 	//자식이 로드될 때까지 대기하기 위해서 방금 생성한 자식 스레드를 찾는다.
 	struct thread *child = get_child_process(pid);
 
+	//현재 스레드는 생성만 완료된 상태. 생성되어서 ready_list에 들어가고 실행될 때 __do_fork 함수가 실행
+	//__do_fork 함수가 실행되어 로드가 완료될 때까지 부모는 대기한다.
 	sema_down(&child->load_sema);
 
 	if(child->exit_status == TID_ERROR)
 		return TID_ERROR;
 	
+	//자식 프로세스의 pid를 반환한다.
 	return pid;
-}
-
-struct thread *get_child_process(int pid)
-{
-	struct list *child_list = &thread_current()->child_list;
-	struct list_elem * e = list_begin(child_list);
-	struct thread * t;
-	
-	for (struct list_elem *e = list_begin(child_list); e != list_end(child_list); e = list_next(e))
-	{
-		struct thread *t = list_entry(e, struct thread, child_elem);
-		/* 해당 pid가 존재하면 프로세스 디스크립터 반환 */
-		if (t->tid == pid)
-			return t;
-	}
-	/* 리스트에 존재하지 않으면 NULL 리턴 */
-	return NULL;
 }
 
 #ifndef VM
@@ -151,7 +137,7 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
 	memcpy(newpage, parent_page, PGSIZE);
-	writable = is_writable(pte);
+	writable = is_writable(pte);	//쓰기 가능
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
@@ -204,6 +190,7 @@ __do_fork (void *aux) {
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 
+	//파일 디스크립터 테이블의 파일 복제
 	struct file_descriptor *fd;
 	struct list *fd_list = &thread_current()->fd_list;
 	struct list_elem *e = list_begin(fd_list);
@@ -215,11 +202,11 @@ __do_fork (void *aux) {
 		if (fd->file == NULL)
 			continue;
 
-		// 특별한 파일(표준 입력, 표준 출력, 표준 오류)이 아닌 경우에만 파일을 복제합니다.
+		// 특별한 파일(표준 입력, 표준 출력, 표준 오류)이 아닌 경우에만 파일을 복제한다.
 		if (fd->fd_num > 2) {
 			struct file *file = file_duplicate(fd->file);
 			if (file != NULL) {
-				// 파일을 복제한 후, 새로운 파일 디스크립터 테이블에 추가합니다.
+				// 파일을 복제한 후, 새로운 파일 디스크립터 테이블에 추가한다.
 				struct file_descriptor *new_fd = malloc(sizeof(struct file_descriptor));
 				if (new_fd != NULL) {
 					new_fd->file = file;
@@ -230,6 +217,9 @@ __do_fork (void *aux) {
 		}
 	}
 
+	current->last_create_fd = parent->last_create_fd;
+
+	//로드가 완료될 때까지 기다리고 있던 부모 대기 해제
 	sema_up(&current->load_sema);
 	process_init ();
 
@@ -357,18 +347,20 @@ process_wait (tid_t child_tid UNUSED) {
 	if(child == NULL)
 		return -1;
 
+	//자식이 종료될 때까지 대기한다.(process_exit에서 자식이 종료될 때 sema_up해줄 것)
 	sema_down(&child->wait_sema);
-
+	//자식이 종료됨을 알리는 wait_sema signal을 받으면 현재 스레드의 자식 리스트에서 제거한다.
 	list_remove(&child->child_elem);
-
+	//자식이 완전히 종료되고 스케줄링이 이어질 수 있도록 자식에게 signal을 보낸다.
 	sema_up(&child->exit_sema);
 
-	return child->exit_status;
+	return child->exit_status;	//자식의 exit_status를 반환한다.
 }
 
 /* Exit the process. This function is called by thread_exit (). */
 void
 process_exit (void) {
+
 	struct thread *curr = thread_current ();
 	/* TODO: Your code goes here.
 	 * TODO: Implement process termination message (see
@@ -379,6 +371,7 @@ process_exit (void) {
 	struct list_elem *e;
 	struct file_descriptor *fd;
 
+	//파일디스크립터 테이블의 모든 파일을 닫고 메모리를 반환한다.
 	while(!list_empty(fd_list))
 	{
 		e = list_pop_front(fd_list);
@@ -386,11 +379,14 @@ process_exit (void) {
 		close(fd);
 	}
 
+	//현재 실행 중인 파일을 닫는다.
 	file_close(curr->running);
 
 	process_cleanup ();
 
+	//자식이 종료될 때까지 대기하고 있는 부모에게 signal을 보낸다.
 	sema_up(&curr->wait_sema);
+	//부모의 signal을 기다린다. 대기가 풀리고 나서 do_schedule이 이어져 다른 스레드가 실행된다.
 	sema_down(&curr->exit_sema);
 }
 
@@ -583,7 +579,9 @@ load (const char *file_name, struct intr_frame *if_) {
 		}
 	}
 
+	//스레드가 삭제될 때 파일을 닫을 수 있게 구조체에 파일을 저장한다.
 	t->running = file;
+	//현재 실행 중인 파일은 수정할 수 없게 막는다.
 	file_deny_write(file);
 
 	/* Set up stack. */
@@ -591,7 +589,8 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 
 	/* Start address. */
-	if_->rip = ehdr.e_entry;
+	if_->rip = ehdr.e_entry;	//entry point 초기화
+	//rip : 프로그램 카운터(실행할 다음 인스트럭션의 메모리 주소)
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
@@ -600,6 +599,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
+	//파일을 여기서 닫지 않고 스레드가 삭제될 때 process_exit에서 닫는다.
 	//file_close (file);
 	return success;
 }
@@ -816,3 +816,21 @@ setup_stack (struct intr_frame *if_) {
 	return success;
 }
 #endif /* VM */
+
+//pid를 인자로 받아 자식 스레드를 반환하는 함수
+struct thread *get_child_process(int pid)
+{
+	struct list *child_list = &thread_current()->child_list;
+	struct list_elem * e = list_begin(child_list);
+	struct thread * t;
+	
+	for (struct list_elem *e = list_begin(child_list); e != list_end(child_list); e = list_next(e))
+	{
+		struct thread *t = list_entry(e, struct thread, child_elem);
+		/* 해당 pid가 존재하면 프로세스 디스크립터 반환 */
+		if (t->tid == pid)
+			return t;
+	}
+	/* 리스트에 존재하지 않으면 NULL 리턴 */
+	return NULL;
+}
