@@ -175,14 +175,14 @@ __do_fork (void *aux) {
 		goto error;
 
 	process_activate (current);
-	#ifdef VM
-		supplemental_page_table_init (&current->spt);
-		if (!supplemental_page_table_copy (&current->spt, &parent->spt))
-			goto error;
-	#else
-		if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
-			goto error;
-	#endif
+#ifdef VM
+	supplemental_page_table_init (&current->spt);
+	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
+		goto error;
+#else
+	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
+		goto error;
+#endif
 
 	/* TODO: Your code goes here.
 	 * TODO: Hint) To duplicate the file object, use `file_duplicate`
@@ -191,33 +191,39 @@ __do_fork (void *aux) {
 	 * TODO:       the resources of parent.*/
 
 	//파일 디스크립터 테이블의 파일 복제
-	
-	struct list_elem *e;
+	struct file_descriptor *fd;
+	struct list_elem *e = list_begin(&parent->fd_list);
+	struct list *parent_list = &parent->fd_list;
 
-    for (e = list_begin(&parent->fd_list); e != list_end(&parent->fd_list); e = list_next(e))
+	for (e = list_begin (parent_list); e != list_end (parent_list); e = list_next (e))
 	{
-        struct file_descriptor *fd = list_entry(e, struct file_descriptor, fd_elem);
+		fd = list_entry (e, struct file_descriptor, fd_elem);
 
-        if (fd->file != NULL)
+		if(fd->file != NULL)
 		{
-            struct file *file_dup = file_duplicate(fd->file);
-
-            if (file_dup != NULL)
-			{
-                struct file_descriptor *fd_new = malloc(sizeof(struct file_descriptor));
-                if (fd_new != NULL) {
-                    fd_new->file = file_dup;
-                    fd_new->fd_num = fd->fd_num;
-                    list_push_back(&current->fd_list, &fd_new->fd_elem);
-                } else {
-                    file_close(file_dup);
-                    goto error;
-                }
-            } else {
-                goto error;
-            }
-        }
-    }
+			// 특별한 파일(표준 입력, 표준 출력, 표준 오류)이 아닌 경우에만 파일을 복제한다.
+			
+			struct file *file = file_duplicate(fd->file);
+			if (file != NULL) {
+				// 파일을 복제한 후, 새로운 파일 디스크립터 테이블에 추가한다.
+				struct file_descriptor *new_fd = malloc(sizeof(struct file_descriptor));
+				if (new_fd != NULL) {
+					new_fd->file = file;
+					new_fd->fd_num = fd->fd_num;
+					list_push_back(&current->fd_list, &new_fd->fd_elem);
+				}
+				else
+				{
+					file_close(file);
+					goto error;
+				}	
+			}
+			else
+				goto error;
+			
+		}
+		
+	}
 
 	current->last_create_fd = parent->last_create_fd;
 
@@ -513,6 +519,7 @@ load (const char *file_name, struct intr_frame *if_) {
 	file = filesys_open (file_name);
 	if (file == NULL) {
 		printf ("load: %s: open failed\n", file_name);
+		exit(-1);
 		goto done;
 	}
 
