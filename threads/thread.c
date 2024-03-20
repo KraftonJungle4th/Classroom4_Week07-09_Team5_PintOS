@@ -220,6 +220,9 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	//현재 스레드의 자식으로 추가
+	list_push_back(&thread_current()->child_list, &t->child_elem);
+
 	//새로 들어온 스레드와 현재 스레드의 우선순위 비교
 	//새로 들어온 스레드의 우선순위가 더 높으면 ->schedule 실행 , 기존 스레드 cpu양보 yield()
 	if(t->priority > thread_get_priority())
@@ -509,10 +512,15 @@ init_thread (struct thread *t, const char *name, int priority) {
 	//priotity, donation
 	t->original_priority = priority;
 	list_init(&t->donations);
-	#ifdef USERPROG
+
+	//system call
+	t->exit_status = 0;
+	t->last_create_fd = 2;
 	list_init(&t->fd_list);
-	t->last_create_fd =2;
-	#endif
+	list_init(&t->child_list);
+	sema_init(&t->load_sema,0);
+	sema_init(&t->exit_sema,0);
+	sema_init(&t->wait_sema,0);
 }
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
@@ -528,7 +536,7 @@ next_thread_to_run (void) {
 }
 
 /* Use iretq to launch the thread
-   다른 스레드가 실행되기 시작한다.  */
+   iretq를 사용하여 스레드 시작 */
 void
 do_iret (struct intr_frame *tf) {
 	__asm __volatile(

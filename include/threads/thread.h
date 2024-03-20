@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -27,6 +28,8 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+#define FDT_COUNT_LIMIT 128
 
 /* A kernel thread or user process.
  *
@@ -104,11 +107,24 @@ struct thread {
 	struct list donations;
 	struct list_elem d_elem;
 
+	// system call
+	int last_create_fd;				//마지막 fd 갱신
+	struct list fd_list;			//filedescriptor list
+
+	struct intr_frame parent_if;	
+	struct list child_list;			//자식 리스트
+	struct list_elem child_elem;	
+
+	struct semaphore load_sema;
+	struct semaphore exit_sema;
+	struct semaphore wait_sema;
+	 
+	struct file *running;	//현재 스레드의 실행 중인 파일을 저장
+	int exit_status;
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
-	struct list fd_list;				//filedescriptor list
-	int last_create_fd;					//마지막 fd 갱신
 #endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
@@ -121,7 +137,7 @@ struct thread {
 };
 
 //파일 디스크립터 구조체
-struct file_descrpitor {
+struct file_descriptor {
 	int fd_num;
 	struct list_elem fd_elem;
 	struct file *file;
