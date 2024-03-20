@@ -72,7 +72,6 @@ void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
 	frame = f;
-
 	int sys_num = f->R.rax;	 //시스템 콜 번호
 	switch(sys_num)
 	{
@@ -138,22 +137,28 @@ void exit (int status)
 	thread_exit();
 }
 
-//열린 버퍼 fd로 buffer에 담긴 length만큼 쓰기 작업을 진행한다.
-int write (int fd, const void *buffer, unsigned length)
+pid_t fork (const char *thread_name)
+{	
+	return process_fork(thread_name,frame);
+}
+
+int exec (const char *cmd_line)
 {
-	check_buffer(buffer);
-	int byte = 0;
-	if(fd == 1)
-	{
-		putbuf(buffer, length);
-		byte = length;
-	}else
-	{
-		struct file_descriptor *curr_fd = find_file_descriptor(fd);
-		if(curr_fd == NULL) return NULL;
-		byte = file_write(curr_fd->file, buffer, length);
-	}
-	return byte;
+	check_address(cmd_line);
+
+	char *cmd_line_copy;
+	cmd_line_copy = palloc_get_page(0);
+	if(cmd_line_copy == NULL)
+		exit(-1);
+	strlcpy(cmd_line_copy, cmd_line, PGSIZE);
+
+	if(process_exec(cmd_line_copy) == -1)
+		exit(-1);
+}
+
+int wait (pid_t pid)
+{
+	return process_wait(pid);
 }
 
 //initial_size만큼 새로운 file 초기화한다.
@@ -166,22 +171,23 @@ bool create (const char *file, unsigned initial_size)
 //file을 연다.
 int open (const char *file)
 {
-	struct file *f = filesys_open(file);
+	check_address(file);
+	struct file *file_open = filesys_open(file);
+	if(file_open == NULL)
+		return -1;
 
-	int fd = -1;
-	if(f != NULL)
-		fd = process_add_file(f);
+	int	fd = process_add_file(file_open);
+	if(fd == -1)
+		file_close(file_open);
+
 	return fd;
 }
 
-void close (int fd)
+int filesize (int fd)
 {
 	struct file_descriptor *curr_fd = find_file_descriptor(fd);
-	if(curr_fd == NULL) return NULL;
-
-	list_remove(&curr_fd->fd_elem);
-	file_close(curr_fd->file);
-	free(curr_fd);
+	if(curr_fd == NULL) return -1;
+	return file_length(curr_fd->file);
 }
 
 int read (int fd, void *buffer, unsigned length)
@@ -207,41 +213,22 @@ int read (int fd, void *buffer, unsigned length)
 	return byte;
 }
 
-int filesize (int fd)
+//열린 버퍼 fd로 buffer에 담긴 length만큼 쓰기 작업을 진행한다.
+int write (int fd, const void *buffer, unsigned length)
 {
-	struct file_descriptor *curr_fd = find_file_descriptor(fd);
-	if(curr_fd == NULL) return -1;
-	return file_length(curr_fd->file);
-}
-
-pid_t fork (const char *thread_name)
-{	
-	return process_fork(thread_name,frame);
-}
-
-int wait (pid_t pid)
-{
-	return process_wait(pid);
-}
-
-bool remove (const char *file)
-{
-	check_address(file);
-	return filesys_remove(file);
-}
-
-int exec (const char *cmd_line)
-{
-	check_address(cmd_line);
-
-	char *cmd_line_copy;
-	cmd_line_copy = palloc_get_page(0);
-	if(cmd_line_copy == NULL)
-		exit(-1);
-	strlcpy(cmd_line_copy, cmd_line, PGSIZE);
-
-	if(process_exec(cmd_line_copy) == -1)
-		exit(-1);
+	check_buffer(buffer);
+	int byte = 0;
+	if(fd == 1)
+	{
+		putbuf(buffer, length);
+		byte = length;
+	}else
+	{
+		struct file_descriptor *curr_fd = find_file_descriptor(fd);
+		if(curr_fd == NULL) return NULL;
+		byte = file_write(curr_fd->file, buffer, length);
+	}
+	return byte;
 }
 
 void seek (int fd, unsigned position)
@@ -257,6 +244,22 @@ unsigned tell (int fd)
 	if(curr_fd == NULL)
 		return NULL;
 	return file_tell(curr_fd->file);
+}
+
+void close (int fd)
+{
+	struct file_descriptor *curr_fd = find_file_descriptor(fd);
+	if(curr_fd == NULL) return NULL;
+
+	list_remove(&curr_fd->fd_elem);
+	file_close(curr_fd->file);
+	free(curr_fd);
+}
+
+bool remove (const char *file)
+{
+	check_address(file);
+	return filesys_remove(file);
 }
 
 // 유효한 주소값인지 확인
@@ -290,6 +293,7 @@ int process_add_file(struct file *file)
 	return cur_fd->fd_num; 
 }
 
+//파일디스크립터에서 주어진 fd에 맞는 파일을 찾는다.
 struct file_descriptor *find_file_descriptor(int fd)
 {
 	struct list *fd_list = &thread_current()->fd_list;
