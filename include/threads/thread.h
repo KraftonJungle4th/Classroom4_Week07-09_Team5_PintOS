@@ -113,12 +113,12 @@ struct thread {
 	struct intr_frame parent_if;		//부모의 if
 	struct list child_list;
 	struct list_elem child_elem;
+
 	struct semaphore load_sema;
 	struct semaphore exit_sema;
 	struct semaphore wait_sema;
 	 
 	struct file *running;
-
 	int exit_status;
 
 #ifdef USERPROG
