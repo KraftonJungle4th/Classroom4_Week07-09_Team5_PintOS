@@ -1,320 +1,247 @@
-#include <stdbool.h>
-#include <stddef.h>
-#include <string.h>
-#include "threads/init.h"
-#include "threads/pte.h"
-#include "threads/palloc.h"
+#include "userprog/syscall.h"
+#include <stdio.h>
+#include <syscall-nr.h>
+#include "threads/interrupt.h"
 #include "threads/thread.h"
-#include "threads/mmu.h"
+#include "threads/loader.h"
+#include "userprog/gdt.h"
+#include "threads/flags.h"
 #include "intrinsic.h"
+#include "threads/init.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 
-static uint64_t *
-pgdir_walk (uint64_t *pdp, const uint64_t va, int create) {
-	int idx = PDX (va);
-	if (pdp) {
-		uint64_t *pte = (uint64_t *) pdp[idx];
-		if (!((uint64_t) pte & PTE_P)) {
-			if (create) {
-				uint64_t *new_page = palloc_get_page (PAL_ZERO);
-				if (new_page)
-					pdp[idx] = vtop (new_page) | PTE_U | PTE_W | PTE_P;
-				else
-					return NULL;
-			} else
-				return NULL;
-		}
-		return (uint64_t *) ptov (PTE_ADDR (pdp[idx]) + 8 * PTX (va));
+void syscall_entry (void);
+void syscall_handler (struct intr_frame *);
+void check_address(void *file_addr);
+int process_add_file(struct file *file);
+struct file_descrpitor *find_file_descriptor(int fd);
+
+/* System call.
+ *
+ * Previously system call services was handled by the interrupt handler
+ * (e.g. int 0x80 in linux). However, in x86-64, the manufacturer supplies
+ * efficient path for requesting the system call, the `syscall` instruction.
+ *
+ * The syscall instruction works by reading the values from the the Model
+ * Specific Register (MSR). For the details, see the manual. */
+
+#define MSR_STAR 0xc0000081         /* Segment selector msr */
+#define MSR_LSTAR 0xc0000082        /* Long mode SYSCALL target */
+#define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
+
+
+//Pintos 종료
+void halt (void) 
+{	
+	power_off();
+}
+
+//현재 유저 프로그램을 종료하여 커널 상태로 리턴
+void exit (int status)
+{	
+	struct thread *cur = thread_current();
+	printf("%s: exit(%d)\n", cur->name, status);
+	thread_exit();
+}
+
+//열린 버퍼 fd로 buffer에 담긴 length만큼 쓰기 작업을 진행한다.
+int write (int fd, const void *buffer, unsigned length)
+{
+	int byte = 0;
+	if(fd == 1)
+	{
+		putbuf(buffer, length);
+		byte = length;
+	}else
+	{
+		check_buffer(buffer);
+		struct file_descrpitor *curr_fd = find_file_descriptor(fd);
+		if(curr_fd == NULL) return NULL;
+		byte = file_write(curr_fd->file, buffer, length);
+	}
+	return byte;
+}
+
+//initial_size만큼 새로운 file 초기화한다.
+bool create (const char *file, unsigned initial_size)
+{	
+	check_address(file);
+	return filesys_create (file, initial_size);
+}
+
+//file을 연다.
+int open (const char *file)
+{
+	check_address(file);
+	struct file *f = filesys_open(file);
+	
+	if(f != NULL)
+	{
+		int fd = process_add_file(f);
+
+		return fd;
+	}
+	else
+		return -1;
+}
+
+//현재 스레드의 파일 디스크립터에 현재 파일을 추가한다.
+int process_add_file(struct file *file)
+{
+	struct thread *curr = thread_current();
+	struct file_descrpitor *cur_fd = malloc(sizeof(struct file_descrpitor));
+	struct list *fd_list = &thread_current()->fd_list;
+	
+	cur_fd->file = file;
+	cur_fd->fd_num = (curr->last_create_fd)++;	
+	
+	list_push_back(fd_list, &cur_fd->fd_elem);
+
+	return cur_fd->fd_num; 
+}
+
+void close (int fd)
+{
+	struct file_descrpitor *curr_fd = find_file_descriptor(fd);
+	if(curr_fd == NULL) return NULL;
+	list_remove(&curr_fd->fd_elem);
+	file_close(curr_fd->file);
+	free(curr_fd);
+}
+
+struct file_descrpitor *find_file_descriptor(int fd)
+{
+	struct list *fd_list = &thread_current()->fd_list;
+	if(list_empty(fd_list)) return NULL;
+
+	struct file_descrpitor *file_descriptor;
+	struct list_elem *cur_fd_elem = list_begin(fd_list);
+
+	while(cur_fd_elem != list_end(&fd_list))
+	{
+		file_descriptor = list_entry(cur_fd_elem, struct file_descrpitor, fd_elem);
+
+		if(file_descriptor->fd_num == fd)
+		{
+			return file_descriptor;	
+		}			
+		file_descriptor = list_next(cur_fd_elem);
 	}
 	return NULL;
 }
 
-static uint64_t *
-pdpe_walk (uint64_t *pdpe, const uint64_t va, int create) {
-	uint64_t *pte = NULL;
-	int idx = PDPE (va);
-	int allocated = 0;
-	if (pdpe) {
-		uint64_t *pde = (uint64_t *) pdpe[idx];
-		if (!((uint64_t) pde & PTE_P)) {
-			if (create) {
-				uint64_t *new_page = palloc_get_page (PAL_ZERO);
-				if (new_page) {
-					pdpe[idx] = vtop (new_page) | PTE_U | PTE_W | PTE_P;
-					allocated = 1;
-				} else
-					return NULL;
-			} else
-				return NULL;
-		}
-		pte = pgdir_walk (ptov (PTE_ADDR (pdpe[idx])), va, create);
+
+// pid_t fork (const char *thread_name);
+// int exec (const char *file);
+int read (int fd, void *buffer, unsigned length)
+{
+	int byte = 0;
+	if(fd == 0)
+	{
+		byte = input_getc();
 	}
-	if (pte == NULL && allocated) {
-		palloc_free_page ((void *) ptov (PTE_ADDR (pdpe[idx])));
-		pdpe[idx] = 0;
+	else
+	{
+		check_buffer(buffer);
+		struct file_descrpitor *curr_fd = find_file_descriptor(fd);
+		if(curr_fd == NULL) return NULL;
+		byte = file_read(curr_fd->file, buffer, length);
 	}
-	return pte;
+	
+	return byte;
 }
 
-/* Returns the address of the page table entry for virtual
- * address VADDR in page map level 4, pml4.
- * If PML4E does not have a page table for VADDR, behavior depends
- * on CREATE.  If CREATE is true, then a new page table is
- * created and a pointer into it is returned.  Otherwise, a null
- * pointer is returned. */
-uint64_t *
-pml4e_walk (uint64_t *pml4e, const uint64_t va, int create) {
-	uint64_t *pte = NULL;
-	int idx = PML4 (va);
-	int allocated = 0;
-	if (pml4e) {
-		uint64_t *pdpe = (uint64_t *) pml4e[idx];
-		if (!((uint64_t) pdpe & PTE_P)) {
-			if (create) {
-				uint64_t *new_page = palloc_get_page (PAL_ZERO);
-				if (new_page) {
-					pml4e[idx] = vtop (new_page) | PTE_U | PTE_W | PTE_P;
-					allocated = 1;
-				} else
-					return NULL;
-			} else
-				return NULL;
-		}
-		pte = pdpe_walk (ptov (PTE_ADDR (pml4e[idx])), va, create);
-	}
-	if (pte == NULL && allocated) {
-		palloc_free_page ((void *) ptov (PTE_ADDR (pml4e[idx])));
-		pml4e[idx] = 0;
-	}
-	return pte;
+// int wait (pid_t);
+// bool remove (const char *file);
+
+int filesize (int fd)
+{
+	struct file_descrpitor *curr_fd = find_file_descriptor(fd);
+	int byte = 0;
+	byte = file_length(curr_fd->file);
+	return byte;
 }
 
-/* Creates a new page map level 4 (pml4) has mappings for kernel
- * virtual addresses, but none for user virtual addresses.
- * Returns the new page directory, or a null pointer if memory
- * allocation fails. 
- * */
+// void seek (int fd, unsigned position);
+// unsigned tell (int fd);
 
-/* PML4는 x86 아키텍처에서 가상 메모리와 물리 메모리 간의 매핑을 제어하는 페이지 테이블의 최상위 레벨
-	사용자 가상 주소에 대한 매핑 */
-uint64_t *
-pml4_create (void) {
-	uint64_t *pml4 = palloc_get_page (0);
-	if (pml4)
-		memcpy (pml4, base_pml4, PGSIZE);
-	return pml4;
+// 유효한 주소값인지 확인
+void check_address(void *file_addr)
+{
+	struct thread *t = thread_current();
+	if(file_addr == "\0" || file_addr == NULL || !is_user_vaddr(file_addr) || pml4_get_page(t->pml4, file_addr) == NULL)
+		exit(-1);
 }
 
-static bool
-pt_for_each (uint64_t *pt, pte_for_each_func *func, void *aux,
-		unsigned pml4_index, unsigned pdp_index, unsigned pdx_index) {
-	for (unsigned i = 0; i < PGSIZE / sizeof(uint64_t *); i++) {
-		uint64_t *pte = &pt[i];
-		if (((uint64_t) *pte) & PTE_P) {
-			void *va = (void *) (((uint64_t) pml4_index << PML4SHIFT) |
-								 ((uint64_t) pdp_index << PDPESHIFT) |
-								 ((uint64_t) pdx_index << PDXSHIFT) |
-								 ((uint64_t) i << PTXSHIFT));
-			if (!func (pte, va, aux))
-				return false;
-		}
-	}
-	return true;
+// 유효한 버퍼 주소 값인지 확인
+void check_buffer(void *buffer)
+{
+	struct thread *t = thread_current();
+	if(!is_user_vaddr(buffer) || pml4_get_page(t->pml4, buffer) == NULL)
+		exit(-1);
 }
 
-static bool
-pgdir_for_each (uint64_t *pdp, pte_for_each_func *func, void *aux,
-		unsigned pml4_index, unsigned pdp_index) {
-	for (unsigned i = 0; i < PGSIZE / sizeof(uint64_t *); i++) {
-		uint64_t *pte = ptov((uint64_t *) pdp[i]);
-		if (((uint64_t) pte) & PTE_P)
-			if (!pt_for_each ((uint64_t *) PTE_ADDR (pte), func, aux,
-					pml4_index, pdp_index, i))
-				return false;
-	}
-	return true;
-}
-
-static bool
-pdp_for_each (uint64_t *pdp,
-		pte_for_each_func *func, void *aux, unsigned pml4_index) {
-	for (unsigned i = 0; i < PGSIZE / sizeof(uint64_t *); i++) {
-		uint64_t *pde = ptov((uint64_t *) pdp[i]);
-		if (((uint64_t) pde) & PTE_P)
-			if (!pgdir_for_each ((uint64_t *) PTE_ADDR (pde), func,
-					 aux, pml4_index, i))
-				return false;
-	}
-	return true;
-}
-
-/* Apply FUNC to each available pte entries including kernel's. */
-bool
-pml4_for_each (uint64_t *pml4, pte_for_each_func *func, void *aux) {
-	for (unsigned i = 0; i < PGSIZE / sizeof(uint64_t *); i++) {
-		uint64_t *pdpe = ptov((uint64_t *) pml4[i]);
-		if (((uint64_t) pdpe) & PTE_P)
-			if (!pdp_for_each ((uint64_t *) PTE_ADDR (pdpe), func, aux, i))
-				return false;
-	}
-	return true;
-}
-
-static void
-pt_destroy (uint64_t *pt) {
-	for (unsigned i = 0; i < PGSIZE / sizeof(uint64_t *); i++) {
-		uint64_t *pte = ptov((uint64_t *) pt[i]);
-		if (((uint64_t) pte) & PTE_P)
-			palloc_free_page ((void *) PTE_ADDR (pte));
-	}
-	palloc_free_page ((void *) pt);
-}
-
-static void
-pgdir_destroy (uint64_t *pdp) {
-	for (unsigned i = 0; i < PGSIZE / sizeof(uint64_t *); i++) {
-		uint64_t *pte = ptov((uint64_t *) pdp[i]);
-		if (((uint64_t) pte) & PTE_P)
-			pt_destroy (PTE_ADDR (pte));
-	}
-	palloc_free_page ((void *) pdp);
-}
-
-static void
-pdpe_destroy (uint64_t *pdpe) {
-	for (unsigned i = 0; i < PGSIZE / sizeof(uint64_t *); i++) {
-		uint64_t *pde = ptov((uint64_t *) pdpe[i]);
-		if (((uint64_t) pde) & PTE_P)
-			pgdir_destroy ((void *) PTE_ADDR (pde));
-	}
-	palloc_free_page ((void *) pdpe);
-}
-
-/* Destroys pml4e, freeing all the pages it references. */
 void
-pml4_destroy (uint64_t *pml4) {
-	if (pml4 == NULL)
-		return;
-	ASSERT (pml4 != base_pml4);
+syscall_init (void) {
+	write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48  |
+			((uint64_t)SEL_KCSEG) << 32);
+	write_msr(MSR_LSTAR, (uint64_t) syscall_entry);
 
-	/* if PML4 (vaddr) >= 1, it's kernel space by define. */
-	uint64_t *pdpe = ptov ((uint64_t *) pml4[0]);
-	if (((uint64_t) pdpe) & PTE_P)
-		pdpe_destroy ((void *) PTE_ADDR (pdpe));
-	palloc_free_page ((void *) pml4);
+	/* The interrupt service rountine should not serve any interrupts
+	 * until the syscall_entry swaps the userland stack to the kernel
+	 * mode stack. Therefore, we masked the FLAG_FL. */
+	write_msr(MSR_SYSCALL_MASK,
+			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
 }
 
-/* Loads page directory PD into the CPU's page directory base
- * register. */
+/* The main system call interface */
+/* 시스템 콜 번호를 받아오고, 어떤 시스템 콜 인자들을 받아오고,
+   그에 알맞은 액션을 취해야 한다.*/
 void
-pml4_activate (uint64_t *pml4) {
-	lcr3 (vtop (pml4 ? pml4 : base_pml4));
-}
+syscall_handler (struct intr_frame *f UNUSED) 
+{
+	int sys_num = f->R.rax;	 //시스템 콜 번호
+	switch(sys_num)
+	{
+		case SYS_HALT:
+			halt();
+			break;
+		case SYS_EXIT:	
+			exit(f->R.rdi);
+			break;
+		case SYS_FORK:
+			break;
+		case SYS_EXEC:
+			break;
+		case SYS_WAIT:
+			break;
+		case SYS_CREATE:
+			f->R.rax = create(f->R.rdi, f->R.rsi);
+			break;
+		case SYS_OPEN:
+			f->R.rax = open(f->R.rdi);
+			break;
+		case SYS_FILESIZE:
+			f->R.rax = filesize(f->R.rdi);
+			break;
+		case SYS_READ:
+			f->R.rax = read(f->R.rdi, f->R.rsi, f->R.rdx);
+			break;
+		case SYS_WRITE:
+			f->R.rax = write(f->R.rdi, f->R.rsi, f->R.rdx);
+			break;	
+		case SYS_SEEK:
+			break;	
+		case SYS_TELL:
+			break;	
+		case SYS_CLOSE:
+			close(f->R.rdi);
+			break;	
 
-/* Looks up the physical address that corresponds to user virtual
- * address UADDR in pml4.  Returns the kernel virtual address
- * corresponding to that physical address, or a null pointer if
- * UADDR is unmapped. 
- * 사용자 가상 주소에 해당하는 실제 주소를 조회한다. */
-void *
-pml4_get_page (uint64_t *pml4, const void *uaddr) {
-	ASSERT (is_user_vaddr (uaddr));
-
-	uint64_t *pte = pml4e_walk (pml4, (uint64_t) uaddr, 0);
-
-	if (pte && (*pte & PTE_P))
-		return ptov (PTE_ADDR (*pte)) + pg_ofs (uaddr);
-	return NULL;
-}
-
-/* Adds a mapping in page map level 4 PML4 from user virtual page
- * UPAGE to the physical frame identified by kernel virtual address KPAGE.
- * UPAGE must not already be mapped. KPAGE should probably be a page obtained
- * from the user pool with palloc_get_page().
- * If WRITABLE is true, the new page is read/write;
- * otherwise it is read-only.
- * Returns true if successful, false if memory allocation
- * failed. */
-bool
-pml4_set_page (uint64_t *pml4, void *upage, void *kpage, bool rw) {
-	ASSERT (pg_ofs (upage) == 0);
-	ASSERT (pg_ofs (kpage) == 0);
-	ASSERT (is_user_vaddr (upage));
-	ASSERT (pml4 != base_pml4);
-
-	uint64_t *pte = pml4e_walk (pml4, (uint64_t) upage, 1);
-
-	if (pte)
-		*pte = vtop (kpage) | PTE_P | (rw ? PTE_W : 0) | PTE_U;
-	return pte != NULL;
-}
-
-/* Marks user virtual page UPAGE "not present" in page
- * directory PD.  Later accesses to the page will fault.  Other
- * bits in the page table entry are preserved.
- * UPAGE need not be mapped. */
-void
-pml4_clear_page (uint64_t *pml4, void *upage) {
-	uint64_t *pte;
-	ASSERT (pg_ofs (upage) == 0);
-	ASSERT (is_user_vaddr (upage));
-
-	pte = pml4e_walk (pml4, (uint64_t) upage, false);
-
-	if (pte != NULL && (*pte & PTE_P) != 0) {
-		*pte &= ~PTE_P;
-		if (rcr3 () == vtop (pml4))
-			invlpg ((uint64_t) upage);
+		default:
+			break;
 	}
-}
-
-/* Returns true if the PTE for virtual page VPAGE in PML4 is dirty,
- * that is, if the page has been modified since the PTE was
- * installed.
- * Returns false if PML4 contains no PTE for VPAGE. */
-bool
-pml4_is_dirty (uint64_t *pml4, const void *vpage) {
-	uint64_t *pte = pml4e_walk (pml4, (uint64_t) vpage, false);
-	return pte != NULL && (*pte & PTE_D) != 0;
-}
-
-/* Set the dirty bit to DIRTY in the PTE for virtual page VPAGE
- * in PML4. */
-void
-pml4_set_dirty (uint64_t *pml4, const void *vpage, bool dirty) {
-	uint64_t *pte = pml4e_walk (pml4, (uint64_t) vpage, false);
-	if (pte) {
-		if (dirty)
-			*pte |= PTE_D;
-		else
-			*pte &= ~(uint32_t) PTE_D;
-
-		if (rcr3 () == vtop (pml4))
-			invlpg ((uint64_t) vpage);
-	}
-}
-
-/* Returns true if the PTE for virtual page VPAGE in PML4 has been
- * accessed recently, that is, between the time the PTE was
- * installed and the last time it was cleared.  Returns false if
- * PML4 contains no PTE for VPAGE. */
-bool
-pml4_is_accessed (uint64_t *pml4, const void *vpage) {
-	uint64_t *pte = pml4e_walk (pml4, (uint64_t) vpage, false);
-	return pte != NULL && (*pte & PTE_A) != 0;
-}
-
-/* Sets the accessed bit to ACCESSED in the PTE for virtual page
-   VPAGE in PD. */
-void
-pml4_set_accessed (uint64_t *pml4, const void *vpage, bool accessed) {
-	uint64_t *pte = pml4e_walk (pml4, (uint64_t) vpage, false);
-	if (pte) {
-		if (accessed)
-			*pte |= PTE_A;
-		else
-			*pte &= ~(uint32_t) PTE_A;
-
-		if (rcr3 () == vtop (pml4))
-			invlpg ((uint64_t) vpage);
-	}
+	//printf ("system call!\n");
+	//thread_exit ();
 }
